@@ -81,4 +81,4 @@ INSTALLED_APPS = (
 
 # Add the {% eval ... %} and {% exec ... %} tags
 # These will now be available to all Templates by default!
-import edwa.django_eval
+import libedwa.django_eval

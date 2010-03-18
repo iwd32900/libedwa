@@ -6,19 +6,19 @@ from django.conf import settings
 #from django import forms
 
 import random
-import edwa as edwa_lib
+import libedwa
 
 def controller(request, action_id=None):
     edwa_name = "_EDWA"
     edwa = request.session.get(edwa_name)
     if edwa:
         print "Recovering previously used EDWA object"
-        edwa = edwa_lib.EDWA.loads(edwa)
+        edwa = libedwa.EDWA.loads(edwa)
     else:
         print "Creating new EDWA object"
         # States will not be bookmarkable / emailable b/c secret key is randomly generated and tied to session cookie.
         # Iff all sessions share the same secret key, then states can be shared with others.
-        edwa = edwa_lib.EDWA("edwa_demo:controller:%i:%s" % (random.getrandbits(64), settings.SECRET_KEY), size_limit=100000)
+        edwa = libedwa.EDWA("edwa_demo:controller:%i:%s" % (random.getrandbits(64), settings.SECRET_KEY), size_limit=100000)
     if action_id is None:
         page = edwa.start(request, MainPage.render, {'cnt':0})
     else:

@@ -1,1 +1,1 @@
-from edwa.core import EDWA
+from libedwa.core import EDWA

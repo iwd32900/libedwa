@@ -56,4 +56,4 @@ def do_exec(parser, token):
     return ExecNode(token)
 
 # Make these new tags globally available to all Django templates by default.
-template.add_to_builtins('edwa.django_eval')
+template.add_to_builtins('libedwa.django_eval')
