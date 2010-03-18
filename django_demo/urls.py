@@ -1,0 +1,7 @@
+from django.conf.urls.defaults import *
+from django_demo import views
+
+urlpatterns = patterns('',
+    # Example:
+    url(r'^controller/(?P<action_id>[^/]+)?$', views.controller, name='edwa_demo-controller'),
+)
