@@ -175,25 +175,39 @@ class EDWA(object):
             self._rendering = False
     def do_goto(self, handler, context=None):
         """Change the current view, discarding the old view."""
+        prev_page = self._curr_page
         self._set_page(Page(handler, context, self._curr_page.parent), clone=False)
-    def do_call(self, handler, context=None):
-        """Change the current view, pushing the old view further down the stack."""
-        self._set_page(Page(handler, context, self._curr_page), clone=False)
-    def do_return(self):
-        """Discard the current view and pop the previous view from the stack."""
+        if hasattr(prev_page, "return_handler"):
+            # To avoid having to load/dump the handler function, we just copy it over.
+            # TODO: refactor this to be less ugly!
+            self._curr_page.return_handler = prev_page.return_handler
+            self._curr_page.return_context = prev_page.return_context
+    def do_call(self, handler, context=None, return_handler=None, return_context=None):
+        """Change the current view, pushing the old view further down the stack.
+        If return_handler is provided, it will be called with (edwa_obj, return_value, return_context)
+        *immediately* when (and if) the new page returns.
+        """
+        self._set_page(Page(handler, context, self._curr_page, return_handler, return_context), clone=False)
+    def do_return(self, return_value=None):
+        """Discard the current view and pop the previous view from the stack.
+        If that view specified a return callback, it will be immediately passed "return_value".
+        """
+        prev_page = self._curr_page
         self._set_page(self._curr_page.parent, clone=True)
+        prev_page.on_return(self, return_value)
     def make_noop(self):
         """make_action() shortcut to re-display the current view with no changes."""
         return self.make_action(_handle_noop)
     def make_goto(self, handler, context=None):
         """make_action() shortcut to change the current view when clicked."""
         return self.make_action(_handle_goto, _dump_func(handler), context)
-    def make_call(self, handler, context=None):
+    def make_call(self, handler, context=None, return_handler=None, return_context=None):
         """make_action() shortcut to change the current view when clicked."""
-        return self.make_action(_handle_call, _dump_func(handler), context)
-    def make_return(self):
+        if return_handler: return self.make_action(_handle_call, _dump_func(handler), context, _dump_func(return_handler), return_context)
+        else: return self.make_action(_handle_call, _dump_func(handler), context)
+    def make_return(self, return_value=None):
         """make_action() shortcut to change the current view when clicked."""
-        return self.make_action(_handle_return)
+        return self.make_action(_handle_return, return_value)
     def make_action(self, func, *args, **kwargs):
         """Make a URL-safe action "token" that will invoke the given function when token is passed to run()."""
         return self._encode_action(Action(func, self._curr_page, args, kwargs))
@@ -235,10 +249,11 @@ def _handle_noop(request, edwa):
     pass
 def _handle_goto(request, edwa, handler, context):
     edwa.do_goto(_load_func(handler), context)
-def _handle_call(request, edwa, handler, context):
-    edwa.do_call(_load_func(handler), context)
-def _handle_return(request, edwa):
-    edwa.do_return()
+def _handle_call(request, edwa, handler, context, return_handler=None, return_context=None):
+    if return_handler is not None: return_handler = _load_func(return_handler)
+    edwa.do_call(_load_func(handler), context, return_handler, return_context)
+def _handle_return(request, edwa, return_value):
+    edwa.do_return(return_value)
 
 class Context(dict):
     """A standard dictionary, but one that can be hashed for intern()'ing purposes.
@@ -261,7 +276,7 @@ class Context(dict):
 class Page(object):
     """Wrapper for a view function and its context.
     Pages (and context!) must be immutable once exposed to the web client, or the meaning of URLs could change."""
-    def __init__(self, handler, context=None, parent=None):
+    def __init__(self, handler, context=None, parent=None, return_handler=None, return_context=None):
         self.handler = _dump_func(handler)
         # In this version, context is NOT inherited from parents:
         if context is None: self.context = Context()
@@ -273,9 +288,19 @@ class Page(object):
         #else: self.context = Context()
         #if context is not None: self.context.update(context)
         self.parent = parent
+        # Return handler will be called by EDWA immediately
+        # after calling do_return() when this is the current page.
+        if return_handler is not None:
+            self.return_handler = _dump_func(return_handler)
+            self.return_context = return_context
     def __call__(self, request, edwa):
         handler = _load_func(self.handler)
         return handler(request, edwa)
+    def on_return(self, edwa, return_value):
+        # edwa.context will be the context of the returned-to page (self.parent.context), not self.context
+        if hasattr(self, "return_handler"):
+            handler = _load_func(self.return_handler)
+            handler(edwa, return_value, self.return_context)
     def __cmp__(self, other):
         return cmp(self.__dict__, other.__dict__)
     def clone(self):
@@ -311,14 +336,14 @@ class ExerciseApi(object):
         edwa.start("<FAKE_REQUEST>", self.page1)
         edwa.run("<FAKE_REQUEST>", show(edwa.make_noop()))
         edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action3)))
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_call(self.page2)))
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_call(self.page2, return_handler=self.onreturn1)))
         edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action1)))
         edwa.run("<FAKE_REQUEST>", show(edwa.make_goto(self.page3)))
         for i in xrange(100): edwa.make_goto(self.page4)
         edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action1)))
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action2)))
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action2))) # this does a call()
         edwa.run("<FAKE_REQUEST>", show(edwa.make_return()))
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_return()))
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_return("HIMOM!")))
         edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action1)))
         print "Suspending..."
         action_id = edwa.make_noop() # save current state
@@ -347,7 +372,7 @@ class ExerciseApi(object):
         print "  Exiting action 1.  Request=%s.  Context=%s." % (request, edwa.context.keys())
     def action2(self, request, edwa):
         print "  Entering action 2.  Request=%s.  Context=%s." % (request, edwa.context.keys())
-        edwa.do_call(self.page4, {"fizz":"buzz"})
+        edwa.do_call(self.page4, {"fizz":"buzz"}, self.onreturn1, "EXTRA-STUFF")
         print "  Exiting action 2.  Request=%s.  Context=%s." % (request, edwa.context.keys())
     def action3(self, request, edwa):
         print "  Entering action 3.  Request=%s.  Context=%s." % (request, edwa.context.keys())
@@ -358,3 +383,5 @@ class ExerciseApi(object):
         edwa.context['zip'] = '12345-6789'
         edwa.context['phone_home'] = '555-987-6543'
         print "  Exiting action 3.  Request=%s.  Context=%s." % (request, edwa.context.keys())
+    def onreturn1(self, edwa, return_value, return_context):
+        print "Return value %s in context %s" % (return_value, return_context)
