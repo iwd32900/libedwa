@@ -60,7 +60,7 @@ On the other hand, if everything can be encoded as a URL, it may eliminate the n
 SECURITY: SIGNING vs ENCRYPTION
 [TODO]
 """
-import base64, copy, hashlib, hmac, sys, zlib
+import base64, hashlib, hmac, sys, zlib
 import cPickle as pickle
 
 def _dump_func(f):
@@ -91,99 +91,90 @@ class TamperingError(ValueError):
 
 class EDWA(object):
     """The main point of interaction for clients.
-    The web framework should take care of creating one such object per visitor,
-    and persisting it between requests.
+    Don't try to pickle these objects between requests;
+    just save the secret_key and create a new instance next time.
+    Generated action IDs (passed in URLs) are typically 100 - 200 characters long.
     """
-    def __init__(self, secret_key, size_limit=None):
-        """The serialized size of this object may still exceed size_limit if
-        the current view generated many large actions."""
+    PAGE_KEY = "__libedwa__.page_id"
+    ACTION_KEY = "__libedwa__.action_id"
+    MODE_RENDER = ['render'] # just a unique object instance, use "is"
+    MODE_ACTION = ['action'] # just a unique object instance, use "is"
+    def __init__(self, secret_key, use_GET=False):
         assert secret_key, "Must provide a non-empty secret key!"
         # Configuration
-        self._max_url_length = 2000 # http://stackoverflow.com/questions/417142/what-is-the-maximum-length-of-an-url
         self._secret_key = secret_key # protects actions stored in URLs
-        self._size_limit = size_limit
+        self._use_GET = use_GET # use GET (data in URLs) or POST (no data in URLs)?
+        self._max_url_length = 1900 # Internet Explorer is limited to URLs of 2048 characters TOTAL.
         # Record keeping
-        self._all_actions = {} # actually, only ones too big to fit in URLs
+        self._mode = None # None, MODE_RENDER, MODE_ACTION
         self._curr_page = None
-        self._next_id = 1
-        self._new_actions = [] # big actions added in this pass
-        self._all_contexts = {} # contexts of pages of big actionss
-        self._rendering = False
-    def _set_page(self, page, clone):
-        """Set the current page to some newly-created Page object."""
-        assert page is not None
-        assert not self._rendering, "Can't change location during rendering!  Did you mean to call make_*()?"
-        # Cloning is wasteful if the handler does not modify the current context,
-        # either because it changes location first or because no change is needed.
-        # We try to fix that later by intern()'ing the context objects.
-        if clone and page: page = page.clone()
-        self._curr_page = page
-    def _new_id(self):
-        """Generate a new unique ID token for a stored Action.
-        If you override this (e.g. to use a GUID) make sure whatever you return
-        is a URL-safe string with no dots (".") in it."""
-        new_id = self._next_id
-        self._next_id += 1
-        return str(new_id)
-    def _encode_action(self, action):
-        """If possible, encode the Action directly as a URL.  If not, store it internally and return an ID token."""
-        data = zlib.compress(pickle.dumps(action, pickle.HIGHEST_PROTOCOL), 1)
-        action_id = self._encode_action_data(data)
-        if len(action_id) > self._max_url_length:
-            # Failover to session-based storage
-            action_id = self._new_id()
-            assert action_id not in self._all_actions
-            self._all_actions[action_id] = action
-            self._new_actions.append(action) # need to intern() page contexts later
-        return action_id
-    def _decode_action(self, action_id):
-        """Convert the output of _encode_action() back into a real Action object.
-        If the action_id is invalid, raises a TamperingError.
-        """
-        if action_id in self._all_actions: # action_id just a token for action we're storing
-            action = self._all_actions[action_id]
-            return action
-        else: # action stored directly in URL
-            data = self._decode_action_data(action_id)
-            action = pickle.loads(zlib.decompress(data))
-            return action
-    def _encode_action_data(self, data):
-        """Transform binary string "data" into a signed, possibly encrypted, web-safe form."""
-        auth = hmac.new(self._secret_key, data, hashlib.sha1).digest()
-        return "%s.%s" % (base64.urlsafe_b64encode(auth), base64.urlsafe_b64encode(data))
-    def _decode_action_data(self, action_id):
-        """Undo the action of _encode_action_data, raising TamperingError if a problem arises."""
-        if "." not in action_id: raise TamperingError("Malformed action_id %s" % action_id)
-        auth, data = tuple(base64.urlsafe_b64decode(x) for x in str(action_id).split(".", 1))
-        if auth != hmac.new(self._secret_key, data, hashlib.sha1).digest():
-            raise TamperingError("Signature does not match for %s" % action_id)
-        return data
+        self._curr_page_encoded = None
     @property
     def context(self):
         """The context object for the currently active page view."""
         return self._curr_page.context
+    def _set_page(self, page):
+        """Set the current page to some newly-created Page object."""
+        assert self._mode is not EDWA.MODE_RENDER, "Can't change location during rendering!  Did you mean to call make_*()?"
+        assert page is not None
+        self._curr_page = page
+        self._curr_page_encoded = None
+    def _encode_page(self):
+        assert self._curr_page is not None
+        self._curr_page_encoded = base64.urlsafe_b64encode(zlib.compress(pickle.dumps(self._curr_page, pickle.HIGHEST_PROTOCOL), 1))
+    def _decode_page(self):
+        """In this implementation, the page data itself is not signed; it's signed in combination with an action.
+        So you want to make sure the action has been verified before decoding the page, or it opens you to attacks against pickle."""
+        assert self._curr_page_encoded is not None
+        self._set_page(pickle.loads(zlib.decompress(base64.urlsafe_b64decode(self._curr_page_encoded))))
+    def _encode_action(self, action):
+        """Encode the Action directly as a URL.  Must be paired with page data when passed to run()."""
+        assert self._mode is not EDWA.MODE_ACTION, "Can't create new actions during an action, because page state is not finalized."
+        assert self._curr_page_encoded is not None, "Page state must be serialized before creating an action!"
+        data = base64.urlsafe_b64encode(zlib.compress(pickle.dumps(action, pickle.HIGHEST_PROTOCOL), 1))
+        auth = hmac.new(self._secret_key, "%s.%s" % (data, self._curr_page_encoded), hashlib.sha1).digest()
+        return "%s.%s" % (base64.urlsafe_b64encode(auth), data)
+    def _decode_action(self, action_id):
+        """Convert the output of _encode_action() back into a real Action object.
+        If the action_id is invalid, raises a TamperingError.
+        """
+        assert self._curr_page_encoded is not None, "Page state must be known when decoding an action!"
+        if "." not in action_id: raise TamperingError("Malformed action_id %s" % action_id)
+        auth, data = action_id.split(".", 1)
+        if base64.urlsafe_b64decode(auth) != hmac.new(self._secret_key, "%s.%s" % (data, self._curr_page_encoded), hashlib.sha1).digest():
+            raise TamperingError("Signature does not match for %s" % action_id)
+        action = pickle.loads(zlib.decompress(base64.urlsafe_b64decode(data)))
+        return action
     def start(self, request, handler, context=None):
         """No Action provided -- just display the given view.  Used e.g. for the start of a new session."""
-        self._set_page(Page(handler, context, None), clone=False)
+        self._set_page(Page(handler, context, None))
+        self._encode_page() # needs to be present so view can create actions
         try:
-            self._rendering = True
+            self._mode = EDWA.MODE_RENDER
             return self._curr_page(request, self)
-        finally:
-            self._rendering = False
-    def run(self, request, action_id):
+        finally: self._mode = None
+    def run(self, request, action_id, page_id):
         """Run the provided action and display the resulting view."""
-        action = self._decode_action(action_id)
-        self._set_page(action.start_page, clone=True)
-        action(request, self)
+        action_id, page_id = str(action_id), str(page_id)
+        # Data is saved in two pieces, "base64(hmac).base64(action)" and "base64(page)"
+        # However, hmac is computed on "base64(action).base64(page)"
+        # Typically, many different actions (small) share the same page data (large).
+        self._curr_page_encoded = page_id # don't decode yet, signature not verified
+        action = self._decode_action(action_id) # this checks the signature
+        self._decode_page() # if no exception, now safe to decode page data
         try:
-            self._rendering = True
+            self._mode = EDWA.MODE_ACTION
+            action(request, self)
+        finally: self._mode = None
+        self._encode_page() # needs to be present so view can create actions
+        try:
+            self._mode = EDWA.MODE_RENDER
             return self._curr_page(request, self)
-        finally:
-            self._rendering = False
+        finally: self._mode = None
     def do_goto(self, handler, context=None):
         """Change the current view, discarding the old view."""
         prev_page = self._curr_page
-        self._set_page(Page(handler, context, self._curr_page.parent), clone=False)
+        self._set_page(Page(handler, context, self._curr_page.parent))
         if hasattr(prev_page, "return_handler"):
             # To avoid having to load/dump the handler function, we just copy it over.
             # TODO: refactor this to be less ugly!
@@ -194,13 +185,13 @@ class EDWA(object):
         If return_handler is provided, it will be called with (edwa_obj, return_value, return_context)
         *immediately* when (and if) the new page returns.
         """
-        self._set_page(Page(handler, context, self._curr_page, return_handler, return_context), clone=False)
+        self._set_page(Page(handler, context, self._curr_page, return_handler, return_context))
     def do_return(self, return_value=None):
         """Discard the current view and pop the previous view from the stack.
         If that view specified a return callback, it will be immediately passed "return_value".
         """
         prev_page = self._curr_page
-        self._set_page(self._curr_page.parent, clone=True)
+        self._set_page(self._curr_page.parent)
         prev_page.on_return(self, return_value)
     def make_noop(self):
         """make_action() shortcut to re-display the current view with no changes."""
@@ -217,68 +208,84 @@ class EDWA(object):
         return self.make_action(_handle_return, return_value)
     def make_action(self, func, *args, **kwargs):
         """Make a URL-safe action "token" that will invoke the given function when token is passed to run()."""
-        return self._encode_action(Action(func, self._curr_page, args, kwargs))
-    def dumps(self):
-        """Serialize this object to string form for storage in e.g. a session object.
+        return self._encode_action(Action(func, args, kwargs))
+    def make_page_data(self):
+        """Return URL-safe page data token that needs to be passed to run() along with the action token."""
+        assert self._curr_page_encoded is not None
+        return self._curr_page_encoded
+    # Shortcuts for href(make_XXX()):
+    def href_noop(self): return self.href(self.make_noop())
+    def href_goto(self, *args, **kwargs): return self.href(self.make_goto(*args, **kwargs))
+    def href_call(self, *args, **kwargs): return self.href(self.make_call(*args, **kwargs))
+    def href_return(self, *args, **kwargs): return self.href(self.make_return(*args, **kwargs))
+    def href_action(self, *args, **kwargs): return self.href(self.make_action(*args, **kwargs))
+    def href(self, action_id):
+        """Convenience function to wrap action_id's in JavaScript href to POST the hidden_form().
+        Typical use in Django: <a href='{% eval edwa.href(edwa.make_goto(...)) %}'>link text</a>"""
+        if self._use_GET and len(action_id)+len(self._curr_page_encoded) <= self._max_url_length:
+            return 'libedwa:%s' % action_id # will be expanded to a full URL by JavaScript
+        else:
+            return 'javascript:libedwa_post_href("%s");' % action_id # will trigger a POST of a hidden form via JavaScript
+    def hidden_form(self):
+        """Create a hidden FORM and some JavaScript for an HTML page, to enable the href() helper function.
+        Should be placed at the very end of the page, just before </BODY>, after all <A> links!
         """
-        # Page objects will proliferate wildly, but try to "intern()" their contexts, which may be large.
-        def intern_pages(page):
-            while page is not None:
-                if page.context in self._all_contexts:
-                    page.context = self._all_contexts[page.context]
-                else:
-                    self._all_contexts[page.context] = page.context
-                page = page.parent
-        curr_page, self._curr_page = self._curr_page, None # no reason to store this
-        # Don't want these to get stored, particularly, but might need them in a minute.  Make a copy:
-        new_actions = set(self._new_actions) # hash on object identity is all we need here
-        self._new_actions = []
-        # Pickle and compress everything, after interning.  If too big, drop the old ones and try again.
-        for action in new_actions: intern_pages(action.start_page)
-        data = zlib.compress(pickle.dumps(self, pickle.HIGHEST_PROTOCOL), 1)
-        if self._size_limit is not None and len(data) > self._size_limit:
-            # Oops!  Too big.  Wipe everything but the actions added this cycle.
-            self._all_contexts.clear()
-            for action_id, action in list(self._all_actions.iteritems()):
-                if action not in new_actions:
-                    del self._all_actions[action_id]
-                else: intern_pages(action.start_page)
-            # OK, re-encode remaining data
-            data = zlib.compress(pickle.dumps(self, pickle.HIGHEST_PROTOCOL), 1)
-        self._curr_page = curr_page # restore this so we can continue
-        return data
-    @staticmethod
-    def loads(data):
-        """Restore this object from storage."""
-        return pickle.loads(zlib.decompress(data))
+        return r"""<script type='text/javascript'>
+// This part is for links submitted via GET:
+re = RegExp("\\blibedwa:");
+var anchors = document.getElementsByTagName("A");
+for(var i = 0; i < anchors.length; i++) {
+  var a = anchors[i];
+  a.href = a.href.replace(re, "?%(pkey)s=%(pdata)s&%(akey)s=");
+}
+// This part is for links submitted via POST:
+function libedwa_post_href(action_id) {
+  document.getElementById('__libedwa__.action_id').value = action_id; document.getElementById('__libedwa__').submit();
+}
+</script>
+<form id='__libedwa__' action='' method='POST' enctype='multipart/form-data'>
+<input type='hidden' name='%(pkey)s' value='%(pdata)s'>
+<input type='hidden' id='__libedwa__.action_id' name='%(akey)s' value=''>
+</form>
+""" % {'pkey':self.PAGE_KEY, 'pdata':self.make_page_data(), 'akey':self.ACTION_KEY}
+#        else: return r"""<script type='text/javascript'>function libedwa_post_href(action_id) { document.getElementById('__libedwa__.action_id').value = action_id; document.getElementById('__libedwa__').submit(); }</script>
+#<form id='__libedwa__' action='' method='POST' enctype='multipart/form-data'>
+#<input type='hidden' name='%s' value='%s'>
+#<input type='hidden' id='__libedwa__.action_id' name='%s' value=''>
+#</form>
+#""" % (self.PAGE_KEY, self.make_page_data(), self.ACTION_KEY)
 
 try:
     import keyczar.keyczar
     class KeyczarEDWA(EDWA):
-        def __init__(self, path_to_keys, size_limit=None):
-            super(KeyczarEDWA, self).__init__("THIS WILL NEVER BE USED", size_limit)
+        def __init__(self, path_to_keys, *args, **kwargs):
+            """This version provides excellent security (as far as I know) while still storing all data on the client side.
+            Both actions and page states are encrypted, so that clients cannot decode their contents.
+            However, it is very, very slow compared to the unencrypted version -- generating 100 links takes several seconds.
+            Also, the action IDs (passed in URLs) are ~50% larger, typically 200 - 300 characters."""
+            super(KeyczarEDWA, self).__init__("THIS WILL NEVER BE USED", *args, **kwargs)
             del self._secret_key # just to make sure the dummy value is never used
             self.path_to_keys = path_to_keys
             self.crypter = keyczar.keyczar.Crypter.Read(self.path_to_keys)
-        def _encode_action_data(self, data):
-            """Transform binary string "data" into a signed, possibly encrypted, web-safe form."""
-            return self.crypter.Encrypt(data) # also HMAC-SHA1 signed and web-safe base64 encoded
-        def _decode_action_data(self, action_id):
-            """Undo the action of _encode_action_data, raising TamperingError if a problem arises."""
-            try: return self.crypter.Decrypt(action_id)
-            except Exception, e: raise TamperingError(e)
-        def dumps(self):
-            # Can't pickle Crypter objects; have to remove and restore
-            crypter = self.crypter
-            del self.crypter
-            data = super(KeyczarEDWA, self).dumps()
-            self.crypter = crypter
-            return data
-        @staticmethod
-        def loads(data):
-            self = EDWA.loads(data)
-            self.crypter = keyczar.keyczar.Crypter.Read(self.path_to_keys)
-            return self
+        def _encode_page(self):
+            assert self._curr_page is not None
+            self._curr_page_encoded = self.crypter.Encrypt(zlib.compress(pickle.dumps(self._curr_page, pickle.HIGHEST_PROTOCOL), 1)) # also HMAC-SHA1 signed and web-safe base64 encoded
+        def _decode_page(self):
+            assert self._curr_page_encoded is not None
+            self._set_page(pickle.loads(zlib.decompress(self.crypter.Decrypt(self._curr_page_encoded))))
+        def _encode_action(self, action):
+            assert self._mode is not EDWA.MODE_ACTION, "Can't create new actions during an action, because page state is not finalized."
+            assert self._curr_page_encoded is not None, "Page state must be serialized before creating an action!"
+            # Although the action will be encrypted and signed,
+            # we have to prevent attackers mixing-and-matching actions with page states.
+            page_hash = hashlib.sha256(self._curr_page_encoded).digest()
+            return self.crypter.Encrypt(zlib.compress(pickle.dumps((action, page_hash), pickle.HIGHEST_PROTOCOL), 1))
+        def _decode_action(self, action_id):
+            assert self._curr_page_encoded is not None, "Page state must be known when decoding an action!"
+            action, page_hash = pickle.loads(zlib.decompress(self.crypter.Decrypt(action_id)))
+            if page_hash != hashlib.sha256(self._curr_page_encoded).digest():
+                raise TamperingError("Action and page data were mixed-and-matched for %s" % action_id)
+            return action
 except ImportError:
     pass
 
@@ -340,18 +347,11 @@ class Page(object):
             handler(edwa, return_value, self.return_context)
     def __cmp__(self, other):
         return cmp(self.__dict__, other.__dict__)
-    def clone(self):
-        """A semi-deep copy: deep copy of context, shallow copy of parent."""
-        other = copy.copy(self)
-        other.context = copy.deepcopy(self.context)
-        return other
 
 class Action(object):
-    """Wrapper for an action function and its initial state.
-    Like Pages, Actions must not be mutated once exposed to the web client."""
-    def __init__(self, handler, start_page, args=None, kwargs=None):
+    """Wrapper for an action function and its initial state."""
+    def __init__(self, handler, args=None, kwargs=None):
         self.handler = _dump_func(handler)
-        self.start_page = start_page
         # By not setting these as empty objects, we can save a little memory when pickled?
         if args: self.args = args
         if kwargs: self.kwargs = kwargs
@@ -363,38 +363,33 @@ class Action(object):
 
 class ExerciseApi(object):
     """Simple demonstration of the API, without real HTTP requests."""
-    def run(self):
+    def run2(self):
+        self.run(KeyczarEDWA, "/home/ian.davis/tmp-pycrypto/crypt_keys")
+    def run(self, EdwaClass=EDWA, auth="my-secret-key"):
         def show(action_id):
-            print "    Action ID length:", len(action_id)
+            print "    Action ID length:", len(action_id) #, action_id
             return action_id
-        # This is a very small size limit, designed to trigger the GC logic.
-        # A real size limit of 100k or more seems advisable, unless your site is very heavily trafficked.
-        #edwa = EDWA("my-secret-key", size_limit=10000)
-        edwa = KeyczarEDWA("/home/ian.davis/tmp-pycrypto/crypt_keys")
+        edwa = EdwaClass(auth)
         edwa.start("<FAKE_REQUEST>", self.page1)
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_noop()))
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action3)))
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_call(self.page2, return_handler=self.onreturn1)))
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action1)))
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_goto(self.page3)))
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_noop()), edwa.make_page_data())
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action3)), edwa.make_page_data())
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_call(self.page2, return_handler=self.onreturn1)), edwa.make_page_data())
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action1)), edwa.make_page_data())
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_goto(self.page3)), edwa.make_page_data())
         for i in xrange(100): edwa.make_goto(self.page4)
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action1)))
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action2))) # this does a call()
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_return()))
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_return("HIMOM!")))
-        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action1)))
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action1)), edwa.make_page_data())
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action2)), edwa.make_page_data()) # this does a call()
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_return()), edwa.make_page_data())
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_return("HIMOM!")), edwa.make_page_data())
+        edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action1)), edwa.make_page_data())
         print "Suspending..."
         action_id = edwa.make_noop() # save current state
-        #edwa = EDWA.loads(edwa.dumps()) # pickle / unpickle
-        edwa = KeyczarEDWA.loads(edwa.dumps()) # pickle / unpickle
+        page_data = edwa.make_page_data()
         print "Re-animating..."
-        edwa.run("<FAKE_REQUEST>", action_id) # restore state (current view, etc)
+        edwa = EdwaClass(auth) # clean object
+        edwa.run("<FAKE_REQUEST>", action_id, page_data) # restore state (current view, etc)
         ## This makes encoding expensive (~ 1 sec), b/c it adds 100 large Action objects to be interned.
         for i in xrange(100): edwa.make_goto(self.page4)
-        import time
-        t_start = time.time()
-        print "Storage size: %i bytes" % len(edwa.dumps())
-        print "Time for encoding:", (time.time() - t_start), "seconds"
         return edwa
     def page1(self, request, edwa):
         print "On page 1.  Request=%s.  Context=%s." % (request, edwa.context.keys())

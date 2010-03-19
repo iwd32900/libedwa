@@ -3,5 +3,5 @@ from django_demo import views
 
 urlpatterns = patterns('',
     # Example:
-    url(r'^controller/(?P<action_id>[^/]+)?$', views.controller, name='edwa_demo-controller'),
+    url(r'^controller/$', views.controller, name='edwa_demo-controller'),
 )
