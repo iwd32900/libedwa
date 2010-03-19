@@ -57,8 +57,8 @@ processing of actions is significantly more costly than the overhead generated b
 (Probably true in most cases.  But your mileage may vary.)
 On the other hand, if everything can be encoded as a URL, it may eliminate the need for a round-trip to the database.
 
-TODO:
-- Sign (and optionally, encrypt) URLs using Google KeyCzar, to support key rotation, etc.
+SECURITY: SIGNING vs ENCRYPTION
+[TODO]
 """
 import base64, copy, hashlib, hmac, sys, zlib
 import cPickle as pickle
@@ -128,8 +128,7 @@ class EDWA(object):
     def _encode_action(self, action):
         """If possible, encode the Action directly as a URL.  If not, store it internally and return an ID token."""
         data = zlib.compress(pickle.dumps(action, pickle.HIGHEST_PROTOCOL), 1)
-        auth = hmac.new(self._secret_key, data, hashlib.sha1).digest()
-        action_id = "%s.%s" % (base64.urlsafe_b64encode(auth), base64.urlsafe_b64encode(data))
+        action_id = self._encode_action_data(data)
         if len(action_id) > self._max_url_length:
             # Failover to session-based storage
             action_id = self._new_id()
@@ -141,16 +140,24 @@ class EDWA(object):
         """Convert the output of _encode_action() back into a real Action object.
         If the action_id is invalid, raises a TamperingError.
         """
-        if "." in action_id: # action stored directly in URL
-            auth, data = tuple(base64.urlsafe_b64decode(x) for x in str(action_id).split("."))
-            if auth != hmac.new(self._secret_key, data, hashlib.sha1).digest():
-                raise TamperingError("Signature does not match for %s" % action_id)
+        if action_id in self._all_actions: # action_id just a token for action we're storing
+            action = self._all_actions[action_id]
+            return action
+        else: # action stored directly in URL
+            data = self._decode_action_data(action_id)
             action = pickle.loads(zlib.decompress(data))
             return action
-        else: # action_id just a token for action we're storing
-            action = self._all_actions.get(action_id)
-            if action is None: raise TamperingError("Action %s not found" % action_id)
-            return action
+    def _encode_action_data(self, data):
+        """Transform binary string "data" into a signed, possibly encrypted, web-safe form."""
+        auth = hmac.new(self._secret_key, data, hashlib.sha1).digest()
+        return "%s.%s" % (base64.urlsafe_b64encode(auth), base64.urlsafe_b64encode(data))
+    def _decode_action_data(self, action_id):
+        """Undo the action of _encode_action_data, raising TamperingError if a problem arises."""
+        if "." not in action_id: raise TamperingError("Malformed action_id %s" % action_id)
+        auth, data = tuple(base64.urlsafe_b64decode(x) for x in str(action_id).split(".", 1))
+        if auth != hmac.new(self._secret_key, data, hashlib.sha1).digest():
+            raise TamperingError("Signature does not match for %s" % action_id)
+        return data
     @property
     def context(self):
         """The context object for the currently active page view."""
@@ -245,6 +252,36 @@ class EDWA(object):
         """Restore this object from storage."""
         return pickle.loads(zlib.decompress(data))
 
+try:
+    import keyczar.keyczar
+    class KeyczarEDWA(EDWA):
+        def __init__(self, path_to_keys, size_limit=None):
+            super(KeyczarEDWA, self).__init__("THIS WILL NEVER BE USED", size_limit)
+            del self._secret_key # just to make sure the dummy value is never used
+            self.path_to_keys = path_to_keys
+            self.crypter = keyczar.keyczar.Crypter.Read(self.path_to_keys)
+        def _encode_action_data(self, data):
+            """Transform binary string "data" into a signed, possibly encrypted, web-safe form."""
+            return self.crypter.Encrypt(data) # also HMAC-SHA1 signed and web-safe base64 encoded
+        def _decode_action_data(self, action_id):
+            """Undo the action of _encode_action_data, raising TamperingError if a problem arises."""
+            try: return self.crypter.Decrypt(action_id)
+            except Exception, e: raise TamperingError(e)
+        def dumps(self):
+            # Can't pickle Crypter objects; have to remove and restore
+            crypter = self.crypter
+            del self.crypter
+            data = super(KeyczarEDWA, self).dumps()
+            self.crypter = crypter
+            return data
+        @staticmethod
+        def loads(data):
+            self = EDWA.loads(data)
+            self.crypter = keyczar.keyczar.Crypter.Read(self.path_to_keys)
+            return self
+except ImportError:
+    pass
+
 def _handle_noop(request, edwa):
     pass
 def _handle_goto(request, edwa, handler, context):
@@ -332,7 +369,8 @@ class ExerciseApi(object):
             return action_id
         # This is a very small size limit, designed to trigger the GC logic.
         # A real size limit of 100k or more seems advisable, unless your site is very heavily trafficked.
-        edwa = EDWA("my-secret-key", size_limit=10000)
+        #edwa = EDWA("my-secret-key", size_limit=10000)
+        edwa = KeyczarEDWA("/home/ian.davis/tmp-pycrypto/crypt_keys")
         edwa.start("<FAKE_REQUEST>", self.page1)
         edwa.run("<FAKE_REQUEST>", show(edwa.make_noop()))
         edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action3)))
@@ -347,7 +385,8 @@ class ExerciseApi(object):
         edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action1)))
         print "Suspending..."
         action_id = edwa.make_noop() # save current state
-        edwa = EDWA.loads(edwa.dumps()) # pickle / unpickle
+        #edwa = EDWA.loads(edwa.dumps()) # pickle / unpickle
+        edwa = KeyczarEDWA.loads(edwa.dumps()) # pickle / unpickle
         print "Re-animating..."
         edwa.run("<FAKE_REQUEST>", action_id) # restore state (current view, etc)
         ## This makes encoding expensive (~ 1 sec), b/c it adds 100 large Action objects to be interned.
