@@ -57,8 +57,112 @@ processing of actions is significantly more costly than the overhead generated b
 (Probably true in most cases.  But your mileage may vary.)
 On the other hand, if everything can be encoded as a URL, it may eliminate the need for a round-trip to the database.
 
-SECURITY: SIGNING vs ENCRYPTION
-[TODO]
+=== SECURITY ===
+
+There are several known possible dangers in using EDWA to develop a web applications, listed below.
+Many of these are shared by some or all other web frameworks, but some may be unique to EDWA.
+Other risks, unforeseen by the author, may also exist.
+
+1.  Remote code execution / compromise of server machine
+    EDWA uses Python's "pickle" module to store and retrieve objects.
+    The "pickle" documentation states that it is not intended to be secure against malicious data.
+    EDWA uses cryptographic signing to prevent clients from crafting malicious data to send to "pickle",
+    but if (1) the secret key became known to the client, (2) the signing scheme were implemented incorrectly in EDWA,
+    or (3) a weakness was discovered in HMAC-SHA1 signing, a client might circumvent this protection.
+    Depending on the specific weaknesses of "pickle" and/or "cPickle", this could lead to buffer-overflow and other attacks.
+    For this reason, it is *very* important to protect the secret key when storing pickled data
+    in web pages or URLs on the client side (i.e. the GET and POST backends).
+
+2.  Exposing private internal data to users
+    In GET and POST mode, the current state of the application is stored on the client as page contents and/or URLs.
+    Although this data is signed to prevent *modification*, by default the client can still *read* all the data stored there.
+    If your application stores information in EDWA that you would not want the user to view,
+    you must either encrypt the data (using the KeyczarEDWA object) or use the database backend.
+
+3.  Session hijacking / user data theft
+    The GET and database backends both store application state in the URL:  GET stores a pickled Python object directly,
+    and the database stores a unique identifier in the URL which corresponds to an object stored in the database.
+    This can be a feature, because application states can be bookmarked in the browser or emailed to oneself or others.
+    However, these URLs may also be exposed to other web sites by the HTTP Referrer: header
+    when the user leaves the application, e.g. by clicking a link to another site.
+    In this case, a malicious third-party site could access the user's data directly (by decoding the GET pickle, as above)
+    and/or hijack the user's session to mis-use the web application or steal user data from it.
+    The harm (or not) of such attacks depends entirely on the nature of your web application.
+    To protect against direct decoding, either encrypt the GET pickles with Keyczar, or use the database backend.
+    To protect against hijacking, create a unique secret key for each user that is tied to the user's session cookie.
+    (This will prevent users from emailing links to application states,
+    and depending on the life of the session cookie, may prevent them from bookmarking application states.)
+    Because Keyczar does not seem to support salting its on-disk keys,
+    the GET backend cannot be protected against both these dangers simultanously.
+    If this is a concern but you still want to use the GET backend, you should encrypt with Keyczar and then
+    make sure all links to external sites pass through a "bounce" page on your server, e.g.:
+    
+        http://my-web-app.com/bounce?dest=http://evil-other-site.com/
+
+    If implemented correctly, this should avoid passing GET pickle outside your site in the Referrer: header.
+    Use a tool like Firebug to ensure that you have successfully done this.
+
+=== CHOICE OF BACKEND ===
+
+EDWA supports similar feature sets using several different backend implementations.
+The available backends are GET, POST, and database;  the GET and POST modes also have encrypted variants.
+Furthermore, for unencrypted GET and POST, you may use a global secret key or a per-user secret key for signing.
+Note that all GET methods failover to their corresponding POST methods if encoded data size exceeds ~2000 characters.
+
+- Unencrypted GET, same secret key for all users
+  Pros: no database required, all data stored client-side, users can bookmark and email application states as links,
+        users can "fork" the application by opening links in new tabs/windows.
+  Cons: data size must stay below 2000 bytes when signed and encoded, data may be inspected by user,
+        care must be taken to avoid exposing URLs to external web sites via the Referrer: header,
+        requires basic JavaScript capabilities on the client (excludes web crawlers, etc).
+
+- Unencrypted GET, unique secret key tied to user's session cookie
+  Pros: no database required, all data stored client-side, users can bookmark application states
+        (for the life of the cookie only), users can "fork" the application by opening links in new tabs/windows.
+  Cons: data size must stay below 2000 bytes when signed and encoded, data may be inspected by user,
+        care must be taken to avoid exposing URLs to external web sites via the Referrer: header (due to decoding, not hijacking),
+        requires basic JavaScript capabilities on the client (excludes web crawlers, etc),
+        user cannot email application states as links (and bookmarks will eventually expire)
+
+- Encrypted GET, same secret key for all users (unique keys not supported by Keyczar)
+  Pros: no database required, all data stored client-side, users can bookmark and email application states as links,
+        users can "fork" the application by opening links in new tabs/windows, user cannot decode application data.
+  Cons: data size must stay below 2000 bytes when signed and encoded,
+        encrypting many links can be quite CPU intensive (~100 / second?),
+        care must be taken to avoid exposing URLs to external web sites via the Referrer: header,
+        requires basic JavaScript capabilities on the client (excludes web crawlers, etc).
+
+- Unencrypted POST, same secret key for all users OR unique secret key tied to user's session cookie
+  Pros: no database required, all data stored client-side, data size limited only by network bandwidth,
+        no danger in exposing URLs to external web sites via the Referrer: header.
+  Cons: data may be inspected by user, users cannot bookmark and email application states as links,
+        users cannot "fork" the application by opening links in new tabs/windows,
+        requires basic JavaScript capabilities on the client (excludes web crawlers, etc).
+
+- Encrypted POST, same secret key for all users (unique keys not supported by Keyczar)
+  Pros: no database required, all data stored client-side, data size limited only by network bandwidth,
+        no danger in exposing URLs to external web sites via the Referrer: header, user cannot decode application data.
+  Cons: users cannot bookmark and email application states as links,
+        users cannot "fork" the application by opening links in new tabs/windows,
+        encrypting many links can be quite CPU intensive (~100 / second?),
+        requires basic JavaScript capabilities on the client (excludes web crawlers, etc).
+
+- Database, same secret key (user GUID) for all users
+  Pros: data size not limited by network bandwidth, user cannot decode application data,
+        users can bookmark and email application states as links,
+        users can "fork" the application by opening links in new tabs/windows,
+        no JavaScript required on the client (permits web crawlers, etc).
+  Cons: database required, data accumulates on server side and must be periodically purged,
+        care must be taken to avoid exposing URLs to external web sites via the Referrer: header.
+
+- Database, unique secret key (user GUID) tied to user's session cookie
+  Pros: data size not limited by network bandwidth, user cannot decode application data,
+        users can bookmark application states (for the life of the cookie only),
+        users can "fork" the application by opening links in new tabs/windows,
+        no danger in exposing URLs to external web sites via the Referrer: header,
+        no JavaScript required on the client (permits web crawlers, etc).
+  Cons: database required, data accumulates on server side and must be periodically purged,
+        user cannot email application states as links (and bookmarks will eventually expire).
 """
 import base64, hashlib, hmac, sys, zlib
 import cPickle as pickle
