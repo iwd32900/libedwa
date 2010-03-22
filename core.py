@@ -5,6 +5,8 @@ Please see the README file for explanation!
 import base64, hashlib, hmac, sys, zlib
 import cPickle as pickle
 
+__all__ = ['EDWA', 'TamperingError']
+
 def _dump_func(f):
     """Given a module-level or instance function, convert to a picklable form."""
     if hasattr(f, "im_class"): return ".".join((f.__module__, f.im_class.__name__, f.__name__))
@@ -190,12 +192,6 @@ function libedwa_post_href(action_id) {
 <input type='hidden' id='__libedwa__.action_id' name='%(akey)s' value=''>
 </form>
 """ % {'pkey':self.PAGE_KEY, 'pdata':self.make_page_data(), 'akey':self.ACTION_KEY}
-#        else: return r"""<script type='text/javascript'>function libedwa_post_href(action_id) { document.getElementById('__libedwa__.action_id').value = action_id; document.getElementById('__libedwa__').submit(); }</script>
-#<form id='__libedwa__' action='' method='POST' enctype='multipart/form-data'>
-#<input type='hidden' name='%s' value='%s'>
-#<input type='hidden' id='__libedwa__.action_id' name='%s' value=''>
-#</form>
-#""" % (self.PAGE_KEY, self.make_page_data(), self.ACTION_KEY)
 
 try:
     import keyczar.keyczar
@@ -228,6 +224,78 @@ try:
             if page_hash != hashlib.sha256(self._curr_page_encoded).digest():
                 raise TamperingError("Action and page data were mixed-and-matched for %s" % action_id)
             return action
+    __all__.append('KeyczarEDWA')
+except ImportError:
+    pass
+
+try:
+    import sqlalchemy as sa
+    import datetime, uuid
+
+    meta = sa.MetaData()
+    sa.Table('libedwa_page', meta,
+             sa.Column('id', sa.Integer, primary_key=True),
+             sa.Column('created', sa.DateTime, index=True, nullable=False, default=datetime.datetime.now),
+             sa.Column('user_uuid', sa.String(32), nullable=True),
+             sa.Column('page_uuid', sa.String(32), nullable=False),
+             sa.Column('data', sa.Binary),
+             )
+    sa.Index('libedwa_user_page_idx', meta.tables['libedwa_page'].c.user_uuid, meta.tables['libedwa_page'].c.page_uuid, unique=True)
+    sa.Table('libedwa_action', meta,
+             sa.Column('page_id', sa.Integer, sa.ForeignKey('libedwa_page.id'), nullable=False),
+             sa.Column('action_uuid', sa.String(32), nullable=False),
+             sa.Column('data', sa.Binary),
+             sa.PrimaryKeyConstraint('page_id', 'action_uuid')
+             )
+    
+    class DatabaseEDWA(EDWA):
+        def __init__(self, db_url_or_engine, user_uuid, *args, **kwargs):
+            """
+            "db_url" - a database connection URL in SQLAlchemy format, or the actual Engine object.
+            "user_uuid" - up to 32 characters identifying the user / session.  Generate with "uuid.uuid4().hex".  Can be None.
+            """
+            super(DatabaseEDWA, self).__init__("THIS WILL NEVER BE USED", *args, **kwargs)
+            del self._secret_key # just to make sure the dummy value is never used
+            if user_uuid: assert len(user_uuid) <= 32
+            self._user_uuid = user_uuid
+            if isinstance(db_url_or_engine, sa.engine.Engine): self.engine = db_url_or_engine
+            else: self.engine = sa.create_engine(db_url_or_engine)#, echo_pool=True)
+            meta.create_all(bind=self.engine)
+        def _encode_page(self):
+            assert self._curr_page is not None
+            pageT = meta.tables['libedwa_page']
+            data = zlib.compress(pickle.dumps(self._curr_page, pickle.HIGHEST_PROTOCOL), 1)
+            page_uuid = uuid.uuid4().hex
+            result = self.engine.execute(pageT.insert(), user_uuid=self._user_uuid, page_uuid=page_uuid, data=data)
+            self._curr_page_id = result.last_inserted_ids()[0] # used for _encode_action()
+            self._curr_page_encoded = page_uuid
+        def _decode_page(self):
+            assert self._curr_page_encoded is not None
+            pageT = meta.tables['libedwa_page']
+            select = sa.select([pageT.c.data], sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded))
+            data = self.engine.execute(select).scalar()
+            self._set_page(pickle.loads(zlib.decompress(data)))
+        def _encode_action(self, action):
+            assert self._mode is not EDWA.MODE_ACTION, "Can't create new actions during an action, because page state is not finalized."
+            assert self._curr_page_encoded is not None, "Page state must be serialized before creating an action!"
+            actionT = meta.tables['libedwa_action']
+            data = zlib.compress(pickle.dumps(action, pickle.HIGHEST_PROTOCOL), 1)
+            action_uuid = uuid.uuid4().hex
+            self.engine.execute(actionT.insert(), page_id=self._curr_page_id, action_uuid=action_uuid, data=data)
+            return action_uuid
+        def _decode_action(self, action_id):
+            assert self._curr_page_encoded is not None, "Page state must be known when decoding an action!"
+            pageT = meta.tables['libedwa_page']
+            actionT = meta.tables['libedwa_action']
+            jn = pageT.join(actionT, pageT.c.id == actionT.c.page_id)
+            select = sa.select([actionT.c.data], sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded, actionT.c.action_uuid == action_id))
+            data = self.engine.execute(select).scalar()
+            return pickle.loads(zlib.decompress(data))
+        def href(self, action_id):
+            return "?%s=%s&%s=%s" % (EDWA.PAGE_KEY, self._curr_page_encoded, EDWA.ACTION_KEY, action_id)
+        def hidden_form(self):
+            return ""
+    __all__.append('DatabaseEDWA')
 except ImportError:
     pass
 
@@ -305,13 +373,17 @@ class Action(object):
 
 class ExerciseApi(object):
     """Simple demonstration of the API, without real HTTP requests."""
+    def run3(self):
+        self.run(DatabaseEDWA, "sqlite:////home/ian.davis/tmp-edwa.db", None)
     def run2(self):
         self.run(KeyczarEDWA, "/home/ian.davis/tmp-pycrypto/crypt_keys")
-    def run(self, EdwaClass=EDWA, auth="my-secret-key"):
+    def run1(self):
+        self.run(EDWA, 'my-secret-key')
+    def run(self, EdwaClass, *args):
         def show(action_id):
             print "    Action ID length:", len(action_id) #, action_id
             return action_id
-        edwa = EdwaClass(auth)
+        edwa = EdwaClass(*args)
         edwa.start("<FAKE_REQUEST>", self.page1)
         edwa.run("<FAKE_REQUEST>", show(edwa.make_noop()), edwa.make_page_data())
         edwa.run("<FAKE_REQUEST>", show(edwa.make_action(self.action3)), edwa.make_page_data())
@@ -328,7 +400,7 @@ class ExerciseApi(object):
         action_id = edwa.make_noop() # save current state
         page_data = edwa.make_page_data()
         print "Re-animating..."
-        edwa = EdwaClass(auth) # clean object
+        edwa = EdwaClass(*args) # clean object
         edwa.run("<FAKE_REQUEST>", action_id, page_data) # restore state (current view, etc)
         ## This makes encoding expensive (~ 1 sec), b/c it adds 100 large Action objects to be interned.
         for i in xrange(100): edwa.make_goto(self.page4)

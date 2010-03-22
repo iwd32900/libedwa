@@ -5,16 +5,22 @@ from django.conf import settings
 #from django.core.urlresolvers import reverse
 #from django import forms
 
-import random
+import random, uuid
+import sqlalchemy as sa
 import libedwa
+
+sa_engine = sa.create_engine("sqlite://")
 
 def controller(request):
     key_name = "_EDWA_controller"
     if key_name not in request.session:
         # States will not be bookmarkable / emailable b/c secret key is randomly generated and tied to session cookie.
         # Iff all sessions share the same secret key, then states can be shared with others.
-        request.session[key_name] = "edwa_demo:controller:%i:%s" % (random.getrandbits(64), settings.SECRET_KEY)
-    edwa = libedwa.EDWA(request.session[key_name], use_GET=True)
+        #request.session[key_name] = "edwa_demo:controller:%i:%s" % (random.getrandbits(64), settings.SECRET_KEY)
+        request.session[key_name] = uuid.uuid4().hex
+    use_db = True
+    if use_db: edwa = libedwa.DatabaseEDWA(sa_engine, request.session[key_name])
+    else: edwa = libedwa.EDWA(request.session[key_name], use_GET=True)
     # Pulling from REQUEST means we can configure EDWA to use either GET or POST.
     # This is important, because even if configured to use GET, really large
     # requests automatically failover to POST mode (to work around browser limits).
