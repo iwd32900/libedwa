@@ -39,8 +39,8 @@ class EDWA(object):
     just save the secret_key and create a new instance next time.
     Generated action IDs (passed in URLs) are typically 100 - 200 characters long.
     """
-    PAGE_KEY = "__libedwa__.page_id"
-    ACTION_KEY = "__libedwa__.action_id"
+    PAGE_KEY = "edwa.page"
+    ACTION_KEY = "edwa.action"
     MODE_RENDER = ['render'] # just a unique object instance, use "is"
     MODE_ACTION = ['action'] # just a unique object instance, use "is"
     def __init__(self, secret_key, use_GET=False):
