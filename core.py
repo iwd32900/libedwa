@@ -38,9 +38,27 @@ class EDWA(object):
     Don't try to pickle these objects between requests;
     just save the secret_key and create a new instance next time.
     Generated action IDs (passed in URLs) are typically 100 - 200 characters long.
+
+    View functions should be defined as:
+    def render(request, edwa):
+        # make some links with href_goto(), etc.
+        return HttpResponse("<html>...</html")
+
+    Event handlers should be defined as:
+    def handle_event(request, edwa):
+        # do_goto(), edwa.context.foo = bar, etc.
+        # nothing to return
+
+    Return value handlers, if used, should be defined as:
+    def on_return(edwa, return_value, return_context):
+        # return_value is provided by the page that's returning
+        # return_context was provided at the time of the original call
+        # do_goto(), edwa.context.foo = return_value, etc.
+        # nothing to return
     """
     PAGE_KEY = "edwa.page"
     ACTION_KEY = "edwa.action"
+    POST_KEY = "edwa.did_post" # used to distinguish EDWA hidden form from user forms
     MODE_RENDER = ['render'] # just a unique object instance, use "is"
     MODE_ACTION = ['action'] # just a unique object instance, use "is"
     def __init__(self, secret_key, use_GET=False):
@@ -170,9 +188,22 @@ class EDWA(object):
             return 'libedwa:%s' % action_id # will be expanded to a full URL by JavaScript
         else:
             return 'javascript:libedwa_post_href("%s");' % action_id # will trigger a POST of a hidden form via JavaScript
+    # Shortcuts for form(make_XXX()):
+    def form_noop(self): return self.form(self.make_noop())
+    def form_goto(self, *args, **kwargs): return self.form(self.make_goto(*args, **kwargs))
+    def form_call(self, *args, **kwargs): return self.form(self.make_call(*args, **kwargs))
+    def form_return(self, *args, **kwargs): return self.form(self.make_return(*args, **kwargs))
+    def form_action(self, *args, **kwargs): return self.form(self.make_action(*args, **kwargs))
+    def form(self, action_id):
+        """Convenience function to create the needed hidden <INPUT> fields in a user form.
+        Typical use in Django: <form> {% raweval edwa.form(edwa.make_action(...)) %} </form>"""
+        return r"""<input type='hidden' name='%(pkey)s' value='%(pdata)s'>
+<input type='hidden' name='%(akey)s' value='%(adata)s'>
+""" % {'pkey':self.PAGE_KEY, 'pdata':self.make_page_data(), 'akey':self.ACTION_KEY, 'adata':action_id}
     def hidden_form(self):
         """Create a hidden FORM and some JavaScript for an HTML page, to enable the href() helper function.
         Should be placed at the very end of the page, just before </BODY>, after all <A> links!
+        Typical use in Django: {{ edwa.hidden_form|safe }} </BODY> </HTML>
         """
         return r"""<script type='text/javascript'>
 // This part is for links submitted via GET:
@@ -188,10 +219,11 @@ function libedwa_post_href(action_id) {
 }
 </script>
 <form id='__libedwa__' action='' method='POST' enctype='multipart/form-data'>
+<input type='hidden' name='%(postkey)s' value='1'>
 <input type='hidden' name='%(pkey)s' value='%(pdata)s'>
 <input type='hidden' id='__libedwa__.action_id' name='%(akey)s' value=''>
 </form>
-""" % {'pkey':self.PAGE_KEY, 'pdata':self.make_page_data(), 'akey':self.ACTION_KEY}
+""" % {'postkey':self.POST_KEY, 'pkey':self.PAGE_KEY, 'pdata':self.make_page_data(), 'akey':self.ACTION_KEY}
 
 def _handle_noop(request, edwa):
     pass

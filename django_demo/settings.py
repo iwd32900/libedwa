@@ -78,7 +78,3 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django_demo',
 )
-
-# Add the {% eval ... %} and {% exec ... %} tags
-# These will now be available to all Templates by default!
-import libedwa.django_eval
