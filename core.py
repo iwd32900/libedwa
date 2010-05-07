@@ -107,15 +107,11 @@ class EDWA(object):
             raise TamperingError("Signature does not match for %s" % action_id)
         action = pickle.loads(zlib.decompress(base64.urlsafe_b64decode(data)))
         return action
-    def start(self, request, handler, context=None):
+    def start(self, request, handler, context=None, render=True):
         """No Action provided -- just display the given view.  Used e.g. for the start of a new session."""
         self._set_page(Page(handler, context, None))
-        self._encode_page() # needs to be present so view can create actions
-        try:
-            self._mode = EDWA.MODE_RENDER
-            return self._curr_page(request, self)
-        finally: self._mode = None
-    def run(self, request, action_id, page_id):
+        if render: return self.render_page(request)
+    def run(self, request, action_id, page_id, render=True):
         """Run the provided action and display the resulting view."""
         action_id, page_id = str(action_id), str(page_id)
         # Data is saved in two pieces, "base64(hmac).base64(action)" and "base64(page)"
@@ -128,6 +124,9 @@ class EDWA(object):
             self._mode = EDWA.MODE_ACTION
             action(request, self)
         finally: self._mode = None
+        if render: return self.render_page(request)
+    def render_page(self, request):
+        """Display the current page state.  Call start() or run() first, with render=False."""
         self._encode_page() # needs to be present so view can create actions
         try:
             self._mode = EDWA.MODE_RENDER
