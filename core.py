@@ -42,7 +42,7 @@ class EDWA(object):
     View functions should be defined as:
     def render(request, edwa):
         # make some links with href_goto(), etc.
-        return HttpResponse("<html>...</html")
+        return HttpResponse("<html>...</html>")
 
     Event handlers should be defined as:
     def handle_event(request, edwa):
