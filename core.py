@@ -75,6 +75,11 @@ class EDWA(object):
     def context(self):
         """The context object for the currently active page view."""
         return self._curr_page.context
+    @property
+    def tmp(self):
+        """Just like context, but not preserved across requests.
+        A convenience for passing transient data between the action and the view."""
+        return self._curr_page.tmp
     def _set_page(self, page):
         """Set the current page to some newly-created Page object."""
         assert self._mode is not EDWA.MODE_RENDER, "Can't change location during rendering!  Did you mean to call make_*()?"
@@ -272,6 +277,15 @@ class Page(object):
         if return_handler is not None:
             self.return_handler = _dump_func(return_handler)
             self.return_context = return_context
+        # .tmp is just like .context, except it is not pickled and restored:
+        self.tmp = Context()
+    def __getstate__(self):
+        d = dict(self.__dict__)
+        del d['tmp'] # remove .tmp before pickling
+        return d
+    def __setstate__(self, d):
+        self.__dict__.update(d)
+        self.tmp = Context() # restore empty .tmp after unpickling
     def __call__(self, request, edwa):
         handler = _load_func(self.handler)
         return handler(request, edwa)
