@@ -1,10 +1,10 @@
 """
 A database-backed backend for Event-Driven Web Applications.
 """
-import datetime, uuid, zlib
-import cPickle as pickle
+import datetime, uuid
 import sqlalchemy as sa
-from libedwa.core import *
+from zlib import compress, decompress
+from libedwa.core import EDWA, Page, Action
 
 __all__ = ['DatabaseEDWA']
 
@@ -41,7 +41,7 @@ class DatabaseEDWA(EDWA):
     def _encode_page(self):
         assert self._curr_page is not None
         pageT = meta.tables['libedwa_page']
-        data = zlib.compress(pickle.dumps(self._curr_page, pickle.HIGHEST_PROTOCOL), 1)
+        data = compress(self._curr_page.encode(), 1)
         page_uuid = uuid.uuid4().hex
         result = self.engine.execute(pageT.insert(), user_uuid=self._user_uuid, page_uuid=page_uuid, data=data)
         self._curr_page_id = result.last_inserted_ids()[0] # used for _encode_action()
@@ -51,12 +51,12 @@ class DatabaseEDWA(EDWA):
         pageT = meta.tables['libedwa_page']
         select = sa.select([pageT.c.data], sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded))
         data = self.engine.execute(select).scalar()
-        self._set_page(pickle.loads(zlib.decompress(data)))
+        self._set_page(Page.decode(decompress(data)))
     def _encode_action(self, action):
         assert self._mode is not EDWA.MODE_ACTION, "Can't create new actions during an action, because page state is not finalized."
         assert self._curr_page_encoded is not None, "Page state must be serialized before creating an action!"
         actionT = meta.tables['libedwa_action']
-        data = zlib.compress(pickle.dumps(action, pickle.HIGHEST_PROTOCOL), 1)
+        data = compress(action.encode(), 1)
         action_uuid = uuid.uuid4().hex
         self.engine.execute(actionT.insert(), page_id=self._curr_page_id, action_uuid=action_uuid, data=data)
         return action_uuid
@@ -67,7 +67,7 @@ class DatabaseEDWA(EDWA):
         jn = pageT.join(actionT, pageT.c.id == actionT.c.page_id)
         select = sa.select([actionT.c.data], sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded, actionT.c.action_uuid == action_id))
         data = self.engine.execute(select).scalar()
-        return pickle.loads(zlib.decompress(data))
+        return Action.decode(decompress(data))
     def href(self, action_id):
         return "?%s=%s&%s=%s" % (EDWA.PAGE_KEY, self._curr_page_encoded, EDWA.ACTION_KEY, action_id)
     def hidden_form(self):

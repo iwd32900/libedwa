@@ -2,18 +2,27 @@
 A library for Event-Driven Web Applications (EDWA).
 Please see the README file for explanation!
 """
-import base64, hashlib, hmac, sys, zlib
+import base64, hashlib, hmac, sys
 import cPickle as pickle
+
+# Zlib compressing appears to be a very small net win in size for simple pages.
+# For contexts with lots of English text, though, it may help more?
+# Bzip2 compression makes things worse for such small amounts of data.
+from zlib import compress, decompress
+#from bz2 import compress, decompress
+#compress = decompress = lambda x, lvl=0: x
 
 __all__ = ['EDWA', 'TamperingError']
 
 def _dump_func(f):
     """Given a module-level or instance function, convert to a picklable form."""
+    if f is None: return None
     if hasattr(f, "im_class"): return ".".join((f.__module__, f.im_class.__name__, f.__name__))
     else: return ".".join((f.__module__, f.__name__))
 
 def _load_func(x):
     """Restore a usable function from the results of _dump_func()."""
+    if x is None: return None
     names = x.split(".")
     # Try first 1, 2, ... names as the module name.
     # (Is it possible to import "foo.bar" without also importing "foo"?)
@@ -88,17 +97,17 @@ class EDWA(object):
         self._curr_page_encoded = None
     def _encode_page(self):
         assert self._curr_page is not None
-        self._curr_page_encoded = base64.urlsafe_b64encode(zlib.compress(pickle.dumps(self._curr_page, pickle.HIGHEST_PROTOCOL), 1))
+        self._curr_page_encoded = base64.urlsafe_b64encode(compress(self._curr_page.encode()))
     def _decode_page(self):
         """In this implementation, the page data itself is not signed; it's signed in combination with an action.
         So you want to make sure the action has been verified before decoding the page, or it opens you to attacks against pickle."""
         assert self._curr_page_encoded is not None
-        self._set_page(pickle.loads(zlib.decompress(base64.urlsafe_b64decode(self._curr_page_encoded))))
+        self._set_page(Page.decode(decompress(base64.urlsafe_b64decode(self._curr_page_encoded))))
     def _encode_action(self, action):
         """Encode the Action directly as a URL.  Must be paired with page data when passed to run()."""
         assert self._mode is not EDWA.MODE_ACTION, "Can't create new actions during an action, because page state is not finalized."
         assert self._curr_page_encoded is not None, "Page state must be serialized before creating an action!"
-        data = base64.urlsafe_b64encode(zlib.compress(pickle.dumps(action, pickle.HIGHEST_PROTOCOL), 1))
+        data = base64.urlsafe_b64encode(compress(action.encode(), 1))
         auth = hmac.new(self._secret_key, "%s.%s" % (data, self._curr_page_encoded), hashlib.sha1).digest()
         return "%s.%s" % (base64.urlsafe_b64encode(auth), data)
     def _decode_action(self, action_id):
@@ -110,7 +119,7 @@ class EDWA(object):
         auth, data = action_id.split(".", 1)
         if base64.urlsafe_b64decode(auth) != hmac.new(self._secret_key, "%s.%s" % (data, self._curr_page_encoded), hashlib.sha1).digest():
             raise TamperingError("Signature does not match for %s" % action_id)
-        action = pickle.loads(zlib.decompress(base64.urlsafe_b64decode(data)))
+        action = Action.decode(decompress(base64.urlsafe_b64decode(data)))
         return action
     def start(self, request, handler, context=None, render=True):
         """No Action provided -- just display the given view.  Used e.g. for the start of a new session."""
@@ -261,7 +270,7 @@ class Page(object):
     """Wrapper for a view function and its context.
     Pages (and context!) must be immutable once exposed to the web client, or the meaning of URLs could change."""
     def __init__(self, handler, context=None, parent=None, return_handler=None, return_context=None):
-        self.handler = _dump_func(handler)
+        self.handler = _load_func(_dump_func(handler)) # create class instance if needed
         # In this version, context is NOT inherited from parents:
         if context is None: self.context = Context()
         else:
@@ -274,38 +283,53 @@ class Page(object):
         self.parent = parent
         # Return handler will be called by EDWA immediately
         # after calling do_return() when this is the current page.
-        if return_handler is not None:
-            self.return_handler = _dump_func(return_handler)
-            self.return_context = return_context
+        self.return_handler = _load_func(_dump_func(return_handler))
+        self.return_context = return_context
         # .tmp is just like .context, except it is not pickled and restored:
         self.tmp = Context()
-    def __getstate__(self):
-        d = dict(self.__dict__)
-        del d['tmp'] # remove .tmp before pickling
-        return d
-    def __setstate__(self, d):
-        self.__dict__.update(d)
-        self.tmp = Context() # restore empty .tmp after unpickling
+    def encode(self):
+        data = [_dump_func(self.handler),
+                (dict(self.context) if len(self.context) else None),
+                (self.parent.encode() if self.parent is not None else None),
+                _dump_func(self.return_handler),
+                self.return_context]
+        while data[-1] is None: data.pop() # remove trailing None's to save space
+        return pickle.dumps(data, pickle.HIGHEST_PROTOCOL)
+    @classmethod
+    def decode(cls, encoded):
+        data = pickle.loads(encoded)
+        while len(data) < 5: data.append(None) # restore trailing None's
+        data[0] = _load_func(data[0])
+        if data[2] is not None: data[2] = cls.decode(data[2])
+        if data[3] is not None: data[3] = _load_func(data[3])
+        print "DECODE", data
+        return cls(*data)
     def __call__(self, request, edwa):
-        handler = _load_func(self.handler)
-        return handler(request, edwa)
+        return self.handler(request, edwa)
     def on_return(self, edwa, return_value):
         # edwa.context will be the context of the returned-to page (self.parent.context), not self.context
-        if hasattr(self, "return_handler"):
-            handler = _load_func(self.return_handler)
-            handler(edwa, return_value, self.return_context)
+        if self.return_handler is not None:
+            self.return_handler(edwa, return_value, self.return_context)
     def __cmp__(self, other):
         return cmp(self.__dict__, other.__dict__)
 
 class Action(object):
     """Wrapper for an action function and its initial state."""
     def __init__(self, handler, args=None, kwargs=None):
-        self.handler = _dump_func(handler)
-        # By not setting these as empty objects, we can save a little memory when pickled?
-        if args: self.args = args
-        if kwargs: self.kwargs = kwargs
+        self.handler = _load_func(_dump_func(handler)) # create class instance if needed
+        self.args = args or []
+        self.kwargs = kwargs or {}
+    def encode(self):
+        data = [_dump_func(self.handler),
+                self.args or None,
+                self.kwargs or None]
+        while data[-1] is None: data.pop() # remove trailing None's to save space
+        return pickle.dumps(data, pickle.HIGHEST_PROTOCOL)
+    @classmethod
+    def decode(cls, encoded):
+        data = pickle.loads(encoded)
+        while len(data) < 3: data.append(None) # restore trailing None's
+        data[0] = _load_func(data[0])
+        return cls(*data)
     def __call__(self, request, edwa):
-        handler = _load_func(self.handler)
-        args = getattr(self, "args", [])
-        kwargs = getattr(self, "kwargs", {})
-        return handler(request, edwa, *args, **kwargs)
+        return self.handler(request, edwa, *self.args, **self.kwargs)
