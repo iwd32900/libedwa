@@ -302,7 +302,6 @@ class Page(object):
         data[0] = _load_func(data[0])
         if data[2] is not None: data[2] = cls.decode(data[2])
         if data[3] is not None: data[3] = _load_func(data[3])
-        print "DECODE", data
         return cls(*data)
     def __call__(self, request, edwa):
         return self.handler(request, edwa)
