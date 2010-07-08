@@ -11,6 +11,9 @@ class raw(object):
 def escape(obj):
     "Escape HTML special chars in the string form of obj, unless obj is wrapped in raw()."
     if isinstance(obj, raw): return unicode(obj.obj)
+    # Whitelist classes we know are safe to not escape, AND that have special printf formatting codes.
+    # All others should be escaped for proper display (e.g. many objects use angle brackets in their str/repr form).
+    elif isinstance(obj, (int,long,float)): return obj
     else: return unicode(obj).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;')
 
 def format_attrs(attrs):
@@ -52,16 +55,22 @@ class Tag(object):
             else: retval = (retval, self)
         t = self.tagger
         t._indent()
-        t._raw(u"<%s%s>" % (self.tagname, format_attrs(self.attrs)))
-        t._depth += 1
+        # no_close doesn't really make sense in a with block,
+        # but __enter__ and __exit__ are also used by __call__ (where it does make sense).
+        if self.no_close:
+            t._raw(u"<%s%s />" % (self.tagname, format_attrs(self.attrs)))
+        else:
+            t._raw(u"<%s%s>" % (self.tagname, format_attrs(self.attrs)))
+            t._depth += 1
         if outer is not None: return retval
         else: return self
     def __exit__(self, exc_type, exc_value, traceback, indent=True):
         "Write the closing tag."
         t = self.tagger
-        t._depth -= 1
-        if indent: t._indent()
-        t._raw(u"</%s>" % self.tagname)
+        if not self.no_close:
+            t._depth -= 1
+            if indent: t._indent()
+            t._raw(u"</%s>" % self.tagname)
         outer = self.outer
         if outer is not None: return outer.__exit__(exc_type, exc_value, traceback)
     def __call__(self, content_or_fmtstr=None, fmtvars=None, **kwargs):
@@ -82,20 +91,8 @@ class Tag(object):
         t = self.tagger
         self.attrs.update(kwargs)
         if content_or_fmtstr is not None:
-            #t._indent()
-            #if self.no_close: t._raw(u"<%s%s />" % (self.tagname, format_attrs(self.attrs)))
-            #else: t._raw(u"<%s%s>" % (self.tagname, format_attrs(self.attrs)))
             self.__enter__()
-            if fmtvars is None:
-                t._raw(escape(content_or_fmtstr))
-            else:
-                if hasattr(fmtvars, "iteritems"):
-                    fmtvars = dict((k, escape(v)) for k, v in fmtvars.iteritems())
-                else:
-                    fmtvars = tuple(escape(v) for v in fmtvars)
-                t._raw(unicode(content_or_fmtstr) % fmtvars)
-            #if self.no_close: t._raw(u"\n")
-            #else: t._raw(u"</%s>\n" % self.tagname)
+            t(content_or_fmtstr, fmtvars, indent=False)
             self.__exit__(None, None, None, indent=False)
         return self
     def __getattr__(self, x):
@@ -126,10 +123,18 @@ class Tagger(object):
         if i is not None:
             self._raw(u"\n")
             self._raw(u" " * (i*self._depth))
-    def __call__(self, data, indent=True):
-        data = escape(data)
+    def __call__(self, content_or_fmtstr, fmtvars=None, indent=True):
         if indent: self._indent()
-        self._raw(data)
+        if fmtvars is None:
+            self._raw(escape(content_or_fmtstr))
+        else:
+            if hasattr(fmtvars, "iteritems"):
+                fmtvars = dict((k, escape(v)) for k, v in fmtvars.iteritems())
+            elif isinstance(fmtvars, basestring):
+                fmtvars = escape(fmtvars)
+            else:
+                fmtvars = tuple(escape(v) for v in fmtvars)
+            self._raw(unicode(content_or_fmtstr) % fmtvars)
     def __getattr__(self, tagname):
         return Tag(self, tagname, no_close=(tagname.lower() in _NOCLOSE_TAGS))
 
@@ -141,9 +146,10 @@ def testit():
         with t.body:
             t.p(class_='speech').b.u.i("Fourscore & seven years ago...", id='id_speech_text')
             with t.table.tr(align='center'):
-                t.td("One")
-                t.td.b("Two")
-                t.td("Three")
+                t.td("<UNSAFE>")
+                t.td.b("---%s---", "1 & 2")
+                t.td("%s, %s, %.2f", ("One", "<II>", 3.14159))
+                t.td("Hello %(othername)s, I'm %(selfname)s", {"othername":"'Foo'", "selfname":raw("'Bar'")})
             t(raw("<input type='hidden' name='foo' value='bar'>"))
     print t._buffer.getvalue()
 
