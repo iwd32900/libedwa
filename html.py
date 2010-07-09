@@ -31,7 +31,7 @@ def format_attrs(attrs):
     attr_strs = []
     for name, value in attrs.iteritems():
         name = name.rstrip("_") # e.g. allow "class_" instead of "class"
-        if value is False: continue
+        if value is False or value is None: continue
         elif value is True: value = escape(name)
         else: value = escape(value)
         attr_strs.append(u" %s='%s'" % (name, value))
