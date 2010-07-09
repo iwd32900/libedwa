@@ -162,3 +162,9 @@ Note that all GET methods failover to their corresponding POST methods if encode
         no JavaScript required on the client (permits web crawlers, etc).
   Cons: database required, data accumulates on server side and must be periodically purged,
         user cannot email application states as links (and bookmarks will eventually expire).
+
+=== ACKNOWLEDGEMENTS ===
+
+EDWA builds on ideas developed in PHP by Ian Davis for MolProbity (http://molprobity.biochem.duke.edu).
+
+Development of EDWA has been made possible in part by GrassRoots Biotechnology.
