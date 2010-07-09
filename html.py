@@ -1,5 +1,9 @@
 """
 A library of helper functions for working with and generating HTML as Unicode strings.
+
+The Tagger class is inspired by Haml (http://haml-lang.com/) for Ruby.
+Compared to Django templates, it's also much faster (as of Django 1.0.2),
+although I haven't quantified "much" very accurately yet.
 """
 from __future__ import with_statement
 
@@ -133,7 +137,8 @@ class Tagger(object):
             elif isinstance(fmtvars, basestring):
                 fmtvars = escape(fmtvars)
             else:
-                fmtvars = tuple(escape(v) for v in fmtvars)
+                try: fmtvars = tuple(escape(v) for v in fmtvars)
+                except TypeError: fmtvars = escape(fmtvars) # guess it wasn't iterable after all! (int, bool, etc.)
             self._raw(unicode(content_or_fmtstr) % fmtvars)
     def __getattr__(self, tagname):
         return Tag(self, tagname, no_close=(tagname.lower() in _NOCLOSE_TAGS))
@@ -147,6 +152,7 @@ def testit():
             t.p(class_='speech').b.u.i("Fourscore & seven years ago...", id='id_speech_text')
             with t.table.tr(align='center'):
                 t.td("<UNSAFE>")
+                t.td("%.3f", 2.7182818)
                 t.td.b("---%s---", "1 & 2")
                 t.td("%s, %s, %.2f", ("One", "<II>", 3.14159))
                 t.td("Hello %(othername)s, I'm %(selfname)s", {"othername":"'Foo'", "selfname":raw("'Bar'")})
