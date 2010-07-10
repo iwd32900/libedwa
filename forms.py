@@ -146,11 +146,27 @@ class FileInput(ScalarInput):
     pass # TODO: implement this
 
 class BooleanInput(ScalarInput):
+    """A control that returns False when unchecked, and a specified non-false value when checked."""
     def __init__(self, form, name, value=1, **kwargs):
+        kwargs["type"] = bool
         super(BooleanInput, self).__init__(form, name, **kwargs)
         self.checked_value = value
     @property
+    def rawvalue(self):
+        """A little different from most inputs: rawvalue is True or False."""
+        val = False
+        strval = unicode(self.checked_value)
+        if self.name in self.form.data:
+            val = any(strval == unicode(formval) for formval in self.form.data)
+        elif hasattr(self, "_initial"):
+            try: val = any(strval == unicode(initial) for initial in self._initial)
+            except TypeError: val = (strval == unicode(self._initial))
+        return bool(val)
+    @property
     def value(self):
+        """A little different from most inputs: value is the fixed value passed to constructor or None."""
+        # This doesn't do much, but at least ensures errors[] is populated.
+        # Although there aren't many things you can require for a checkbox...
         if super(BooleanInput, self).value:
             return self.checked_value
         else: return None
@@ -163,6 +179,7 @@ class CheckboxInput(BooleanInput):
     input_type = "checkbox"
 
 class RadioInput(BooleanInput):
+    """Single radio buttons really aren't useful.  You want RadioSelect instead."""
     input_type = "radio"
 
 class VectorInput(Input):
@@ -289,9 +306,9 @@ def as_table(form, **kwargs):
         else:
             errmsg = ""
         # TODO: add <LABEL for=...> tag
-        label = "<div class='%s'>%s</div>" % (kwargs.get("label_class", u""), component.label)
+        label = u"<div class='%s'>%s</div>" % (kwargs.get("label_class", u""), component.label)
         if component.help_text: label = "%s<div class='%s'>%s</div>" % (label, kwargs.get("help_class", u""), component.help_text)
-        lines.append("<tr align='left' valign='top'><td>%s</td><td>%s</td><td>%s</td></tr>" % (label, component.html(), errmsg))
+        lines.append(u"<tr align='left' valign='top'><td>%s</td><td>%s</td><td>%s</td></tr>" % (label, component.html(), errmsg))
     for component in form:
         if isinstance(component, HiddenInput):
             hiddens.append(component)
@@ -299,13 +316,14 @@ def as_table(form, **kwargs):
         try:
             children = iter(component)
             # TODO: add header line for "wrapper" component
+            lines.append(u"<tr align='left' valign='top'><td colspan='3'>%s:</td></tr>" % component.label)
             for child in children: add_component(child)
         except TypeError: # simple component, not iterable
             add_component(component)
-    lines.append("</table>")
+    lines.append(u"</table>")
     for component in hiddens:
         lines.append(component.html())
-    lines.append("</form>")
+    lines.append(u"</form>")
     return u"\n".join(lines)
 
 def testit():
@@ -318,7 +336,7 @@ def testit():
     form += Select(form, "gender", choices=("male", "female"))
     form += CheckboxInput(form, "spam_me", initial=True)
     # TODO: CheckboxSelect and RadioSelect don't work properly yet!
-    form += CheckboxSelect(form, "hobbies", choices=((1, "sky-diving"), (2, "scuba diving"), (3, "knitting")))
+    form += CheckboxSelect(form, "hobbies", choices=((1, "sky-diving"), (2, "scuba diving"), (3, "knitting")), initial=[2,"3"])
     print "Form is valid?", form.is_valid()
     print as_table(form, table_attrs={'width':'100%'})
 
