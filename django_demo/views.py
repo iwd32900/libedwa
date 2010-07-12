@@ -148,9 +148,10 @@ class FormPage(object):
         form += forms.Select(form, "gender", choices=("male", "female"))
         form += forms.CheckboxInput(form, "spam_me", initial=True)
         form += forms.CheckboxSelect(form, "hobbies", choices=((1, "sky-diving"), (2, "scuba diving"), (3, "knitting")), initial=["3"], type=int)
+        form += forms.FileInput(form, "resume")
         form += forms.Button(form, "Validate")
         if request.method == "POST":
-            form.set_data(dict(request.POST.lists()))
+            form.set_data(dict(request.POST.lists()), request.FILES)
             form.validate() # trigger validation and error display
         response = HttpResponse()
         t = html.Tagger(response, indent=2)

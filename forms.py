@@ -23,7 +23,7 @@ def as_vector(x):
 
 class Form(object):
     """Basic HTML form.  To add fields, use "+=" rather than trying to subclass."""
-    def __init__(self, action="", data={}, method="POST", prefix="", id_prefix="id_", **kwargs):
+    def __init__(self, action="", data={}, files={}, method="POST", prefix="", id_prefix="id_", **kwargs):
         """
         data    see set_data()
         """
@@ -33,15 +33,21 @@ class Form(object):
         self.id_prefix = id_prefix
         self.attrs = kwargs
         self.children = []
-        self.set_data(data)
-    def set_data(self, data):
+        self.set_data(data=data, files=files)
+    def set_data(self, data={}, files={}):
         """
         data    A dictionary mapping HTML names (as strings) to lists of values.
                 Bare, non-list values will automatically be wrapped in lists.
                 This can either be initial values, or the result of form submission.
                 Calling this function replaces any values passed previously or in the constructor.
                 In Django, try dict(request.POST.lists()).
+        files   A dictionary mapping HTML names (as strings) to file-like objects.
+                These will be wrapped in lists (like data) for consistency sake.
+                In Django, try request.FILES.
         """
+        if files:
+            data = dict(data) # make a copy
+            data.update(files) # include info about uploaded files
         # Make sure keys are prefixed with the form-wide prefix.
         # Make sure values are lists -- convert bare values into single-item lists.
         self.data = dict(((k if k.startswith(self.prefix) else self.prefix+k), as_vector(v)) for k, v in data.iteritems())
@@ -179,7 +185,12 @@ class HiddenInput(ScalarInput):
         return u"<input type='hidden' id='%s' name='%s' value='%s'%s />" % (self.id, self.name, escape(self.rawvalue), format_attrs(self.attrs))
 
 class FileInput(ScalarInput):
-    pass # TODO: implement this
+    """Provides either a file(-like) object, or None."""
+    def __init__(self, form, name, **kwargs):
+        kwargs["type"] = lambda x: x or None
+        super(FileInput, self).__init__(form, name, **kwargs)
+    def html(self):
+        return u"<input type='file' id='%s' name='%s'%s />" % (self.id, self.name, format_attrs(self.attrs))
 
 class BooleanInput(ScalarInput):
     """A control that returns False when unchecked, and a specified non-false value when checked."""
