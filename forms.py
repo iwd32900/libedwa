@@ -3,6 +3,24 @@
 
 from libedwa.html import escape, raw, format_attrs
 
+def is_scalar(x):
+    """False if x is a list-like iterable (list, tuple, etc.), but True if x is a string or other scalar."""
+    if isinstance(x, basestring): return True
+    try:
+        iter(x)
+        return False
+    except TypeError:
+        return True
+
+def as_vector(x):
+    """If x is a scalar or non-indexable iterator, wrap it in a list."""
+    if is_scalar(x): return [x]
+    try:
+        len(x)
+        return x
+    except TypeError:
+        return list(x)
+
 class Form(object):
     """Basic HTML form.  To add fields, use "+=" rather than trying to subclass."""
     def __init__(self, action="", data={}, method="POST", prefix="", id_prefix="id_", **kwargs):
@@ -15,8 +33,7 @@ class Form(object):
         self.action = action
         # Make sure keys are prefixed with the form-wide prefix.
         # Make sure values are lists -- convert bare values into single-item lists.
-        self.data = dict(((k if k.startswith(prefix) else prefix+k),
-            (v if isinstance(v, list) else [v])) for k, v in data.iteritems())
+        self.data = dict(((k if k.startswith(prefix) else prefix+k), as_vector(v)) for k, v in data.iteritems())
         self.method = method
         self.prefix = prefix
         self.id_prefix = id_prefix
@@ -45,12 +62,24 @@ class Form(object):
         for child in self.children:
             child.value
             errors += child.errors
-            try:
+            if not is_scalar(child):
                 for grandchild in child:
                     grandchild.value
                     # these errors have already been included in the child
-            except TypeError: pass # most components are not iterable
         return not errors
+    def rawvalues(self):
+        """Returns a dictionary mapping input names (without the prefix)
+        to values or lists of values, depending on their type.
+        The dictionary is re-generated on the fly each time the function is called,
+        so you may want to save it to a variable before using."""
+        return dict((child._name, child.rawvalue) for child in self.children)
+    def values(self):
+        """Returns a dictionary mapping input names (without the prefix)
+        to values or lists of values, depending on their type.
+        This is likely incomplete unless is_valid() returns True.
+        The dictionary is re-generated on the fly each time the function is called,
+        so you may want to save it to a variable before using."""
+        return dict((child._name, child.value) for child in self.children)
 
 ### Various types of input objects to use in Forms ###
 
@@ -60,6 +89,7 @@ class Input(object):
         """
         form        the Form this input will belong to
         name        the value for the name="..." attribute
+        id_postfix  optional postfix for HTML id field to ensure global uniqueness (used by RadioSelect and CheckboxSelect)
         label       a human-readable name for this field
         help_text   a hint for the person filling out the field
         type        callable that takes a single string and returns a Python object
@@ -71,7 +101,7 @@ class Input(object):
         self.form = form
         self._name = name # base name, without form prefix
         self.name = form.prefix + name # HTML name attribute, with form-wide prefix
-        self.id = form.id_prefix + self.name
+        self.id = form.id_prefix + self.name + kwargs.pop("id_postfix", "")
         self.label = kwargs.pop("label", name.replace("_", " ").capitalize())
         self.help_text = kwargs.pop("help_text", None)
         self.type = kwargs.pop("type", unicode)
@@ -119,9 +149,9 @@ class ScalarInput(Input):
         val = u""
         if self.name in self.form.data:
             val = self.form.data[self.name]
-            if len(val): val = val[-1] # if multiple values, return the last one! (like Django)
         elif hasattr(self, "_initial"):
             val = self._initial
+        if not is_scalar(val): val = val[-1] # if multiple values, return the last one! (like Django)
         return val
     def objectify(self, value):
         return self.type(value)
@@ -154,13 +184,13 @@ class BooleanInput(ScalarInput):
     @property
     def rawvalue(self):
         """A little different from most inputs: rawvalue is True or False."""
-        val = False
-        strval = unicode(self.checked_value)
+        to_search = []
         if self.name in self.form.data:
-            val = any(strval == unicode(formval) for formval in self.form.data)
+            to_search = self.form.data[self.name]
         elif hasattr(self, "_initial"):
-            try: val = any(strval == unicode(initial) for initial in self._initial)
-            except TypeError: val = (strval == unicode(self._initial))
+            to_search = as_vector(self._initial)
+        strval = unicode(self.checked_value)
+        val = any(strval == unicode(formval) for formval in to_search)
         return bool(val)
     @property
     def value(self):
@@ -169,7 +199,7 @@ class BooleanInput(ScalarInput):
         # Although there aren't many things you can require for a checkbox...
         if super(BooleanInput, self).value:
             return self.checked_value
-        else: return None
+        else: return False
     def html(self):
         attrs = dict(self.attrs)
         attrs['checked'] = bool(self.rawvalue) # don't want to trigger validation
@@ -189,7 +219,9 @@ class VectorInput(Input):
         if self.name in self.form.data:
             val = self.form.data[self.name]
         elif hasattr(self, "_initial"):
-            val = self._initial
+            val = as_vector(self._initial)
+        if len(val) == 1 and getattr(self, "single_selection", False):
+            val = val[0]
         return val
     def objectify(self, value):
         return [self.type(v) for v in value]
@@ -231,12 +263,16 @@ class Select(ChoiceInput):
         lines.append(u"</select>")
         return u"\n".join(lines)
 
-# TODO: this isn't really a multiple selection!
 class RadioSelect(ChoiceInput):
+    """Although this derives from VectorInput, only one radio can be selected at a time.
+    Thus, it returns a scalar value when a radio is selected.
+    It returns the empty list when no radios are selected."""
+    single_selection = True
     def __init__(self, form, name, **kwargs):
         super(RadioSelect, self).__init__(form, name, **kwargs)
         kwargs.pop("choices", None)
-        self.children = [RadioInput(form, name, **kwargs) for choice in self.choices]
+        kwargs.pop("label", None)
+        self.children = [RadioInput(form, name, value=choice.value, label=choice.label, id_postfix=(".%i" % ii), **kwargs) for ii, choice in enumerate(self.choices)]
     def __iter__(self):
         for child in self.children: yield child
 
@@ -245,7 +281,7 @@ class CheckboxSelect(ChoiceInput):
         super(CheckboxSelect, self).__init__(form, name, **kwargs)
         kwargs.pop("choices", None)
         kwargs.pop("label", None)
-        self.children = [CheckboxInput(form, name, value=choice.value, label=choice.label, **kwargs) for choice in self.choices]
+        self.children = [CheckboxInput(form, name, value=choice.value, label=choice.label, id_postfix=(".%i" % ii), **kwargs) for ii, choice in enumerate(self.choices)]
     def __iter__(self):
         for child in self.children: yield child
 
@@ -281,12 +317,9 @@ def in_choices(choices):
     def validate(values):
         ok = False
         # values is probably a list of values
-        try: ok = all(v in allowed for v in values)
-        except:
-            # But maybe it's a single value in some odd corner case...
-            try: ok = values in allowed
-            except: pass
-        if not ok: return "Please select one of the permitted values"
+        if is_scalar(values): ok = values in allowed
+        else: ok = all(v in allowed for v in values)
+        if not ok: return "Please select one of the permitted choices"
     return validate
 
 ### Display helpers for quickly generating HTML ###
@@ -305,26 +338,29 @@ def as_table(form, **kwargs):
             errmsg = u"<ul class='%s'>\n%s\n</ul>" % (kwargs.get("error_class", u""), u"\n".join(u"<li>%s</li>" % escape(err) for err in component.errors))
         else:
             errmsg = ""
-        # TODO: add <LABEL for=...> tag
-        label = u"<div class='%s'>%s</div>" % (kwargs.get("label_class", u""), component.label)
+        label = u"<div class='%s'><label for='%s'>%s</label></div>" % (kwargs.get("label_class", u""), component.id, component.label)
         if component.help_text: label = "%s<div class='%s'>%s</div>" % (label, kwargs.get("help_class", u""), component.help_text)
         lines.append(u"<tr align='left' valign='top'><td>%s</td><td>%s</td><td>%s</td></tr>" % (label, component.html(), errmsg))
     for component in form:
         if isinstance(component, HiddenInput):
             hiddens.append(component)
             continue
-        try:
-            children = iter(component)
-            # TODO: add header line for "wrapper" component
-            lines.append(u"<tr align='left' valign='top'><td colspan='3'>%s:</td></tr>" % component.label)
-            for child in children: add_component(child)
-        except TypeError: # simple component, not iterable
+        if is_scalar(component):
             add_component(component)
+        else:
+            lines.append(u"<tr align='left' valign='top'><td colspan='3'>%s:</td></tr>" % component.label)
+            for child in component: add_component(child)
     lines.append(u"</table>")
     for component in hiddens:
         lines.append(component.html())
     lines.append(u"</form>")
     return u"\n".join(lines)
+
+### TODO ###
+# Types to support: date, time, datetime
+# Criteria to support: regex, slug, minlen/maxlen, email, url?
+
+### Testing code, should eventually be (re)moved ###
 
 def testit():
     form = Form(data={"first_name":"<John>", "gender":"other"}, prefix="pfx_")
@@ -335,8 +371,10 @@ def testit():
     form += TextInput(form, "num_children", help_text="How many children?", type=int, require=[minimum(0), maximum(20)], initial="-1")
     form += Select(form, "gender", choices=("male", "female"))
     form += CheckboxInput(form, "spam_me", initial=True)
-    # TODO: CheckboxSelect and RadioSelect don't work properly yet!
-    form += CheckboxSelect(form, "hobbies", choices=((1, "sky-diving"), (2, "scuba diving"), (3, "knitting")), initial=[2,"3"])
+    form += CheckboxSelect(form, "hobbies", choices=((1, "sky-diving"), (2, "scuba diving"), (3, "knitting")), initial=["3"], type=int)
     print "Form is valid?", form.is_valid()
     print as_table(form, table_attrs={'width':'100%'})
+    print form.rawvalues()
+    print form.values()
+    return form
 
