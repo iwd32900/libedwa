@@ -11,10 +11,11 @@
 from django.http import HttpResponse, HttpResponseRedirect
 from django.template import Template, Context
 from django.conf import settings
-from django import forms
+import django.forms
 
 import random, uuid
 import libedwa
+from libedwa import html, forms
 
 # Install the {% eval %} and {% exec %} tags without needing to {% load %} them.
 # These will now be available to all Templates by default!
@@ -76,7 +77,8 @@ class MainPage(object):
 <br>The counter is at {{ edwa.context.cnt }}.
 <br><a href='{% eval edwa.href_action(self.add_one) %}'>add one &raquo;</a>
 or <a href='{% url edwa_demo-controller %}'>reset &raquo;</a>
-<p><a href='{% eval edwa.href_call(SubPage.render, return_handler=self.on_return) %}'>Do a "call" to SubPage &raquo;</a>
+<p><a href='{% eval edwa.href_call(SubPage.render, return_handler=self.on_return) %}'>Do a "call" to SubPage &raquo;</a><p>
+<p><a href='{% eval edwa.href_goto(FormPage.render) %}'>Try the EDWA HTML and forms libraries &raquo;</a><p>
 {{ edwa.hidden_form|safe }}
 </body></html>""").render(Context(all_vars)))
     # This is an event handler, triggered by a click on the "add one" link.
@@ -99,8 +101,8 @@ or <a href='{% url edwa_demo-controller %}'>reset &raquo;</a>
 
 
 class SubPage(object):
-    class Form(forms.Form):
-        amount = forms.IntegerField(label="Amount to add to counter", min_value=1, max_value=10)
+    class Form(django.forms.Form):
+        amount = django.forms.IntegerField(label="Amount to add to counter", min_value=1, max_value=10)
     def render(self, request, edwa):
         # If POST_KEY is present in the form data, this POST resulted
         # from clicking a hyperlink that submitted the hidden LibEDWA form.
@@ -132,3 +134,30 @@ class SubPage(object):
             # The return handler set up by MainPage is called instantly,
             # but the new page is not displayed until this handler returns.
             edwa.do_return(myform.cleaned_data['amount'])
+
+
+
+class FormPage(object):
+    def render(self, request, edwa):
+        form = forms.Form(data={"first_name":"<John>", "gender":"other"}, prefix="pfx_")
+        form += forms.HiddenInput(form, "title", initial="Dr.")
+        form += forms.TextInput(form, "first_name", require=[forms.not_empty])
+        form += forms.PasswordInput(form, "middle_name", require=[forms.not_empty])
+        form += forms.TextInput(form, "last_name", initial='"Doe"', require=[forms.not_empty])
+        form += forms.TextInput(form, "num_children", help_text="How many children?", type=int, require=[forms.minimum(0), forms.maximum(20)], initial="-1")
+        form += forms.Select(form, "gender", choices=("male", "female"))
+        form += forms.CheckboxInput(form, "spam_me", initial=True)
+        form += forms.CheckboxSelect(form, "hobbies", choices=((1, "sky-diving"), (2, "scuba diving"), (3, "knitting")), initial=["3"], type=int)
+        form += forms.Button(form, "Validate")
+        if request.method == "POST":
+            form.set_data(dict(request.POST.lists()))
+            form.validate() # trigger validation and error display
+        response = HttpResponse()
+        t = html.Tagger(response, indent=2)
+        with t.html.body:
+            t(html.raw(forms.as_table(form)))
+            t.hr("")
+            t.p(form.validate())
+            t.p(form.rawvalues())
+            t.p(form.values())
+        return response

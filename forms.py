@@ -25,20 +25,26 @@ class Form(object):
     """Basic HTML form.  To add fields, use "+=" rather than trying to subclass."""
     def __init__(self, action="", data={}, method="POST", prefix="", id_prefix="id_", **kwargs):
         """
-        data    A dictionary mapping HTML names (as strings) to lists of values.
-                Bare, non-list values will automatically be wrapped in lists.
-                This can either be initial values, or the result of form submission.
-                In Django, try request.POST.lists().
+        data    see set_data()
         """
         self.action = action
-        # Make sure keys are prefixed with the form-wide prefix.
-        # Make sure values are lists -- convert bare values into single-item lists.
-        self.data = dict(((k if k.startswith(prefix) else prefix+k), as_vector(v)) for k, v in data.iteritems())
         self.method = method
         self.prefix = prefix
         self.id_prefix = id_prefix
         self.attrs = kwargs
         self.children = []
+        self.set_data(data)
+    def set_data(self, data):
+        """
+        data    A dictionary mapping HTML names (as strings) to lists of values.
+                Bare, non-list values will automatically be wrapped in lists.
+                This can either be initial values, or the result of form submission.
+                Calling this function replaces any values passed previously or in the constructor.
+                In Django, try dict(request.POST.lists()).
+        """
+        # Make sure keys are prefixed with the form-wide prefix.
+        # Make sure values are lists -- convert bare values into single-item lists.
+        self.data = dict(((k if k.startswith(self.prefix) else self.prefix+k), as_vector(v)) for k, v in data.iteritems())
     def add(self, child):
         """Add a new input component to this form."""
         self.children.append(child)
@@ -53,10 +59,10 @@ class Form(object):
         if any(isinstance(child, FileInput) for child in self.children):
             attrs["enctype"] = "multipart/form-data"
         return u"<form id='%s%s_form' action='%s' method='%s'%s>" % (self.id_prefix, self.prefix, escape(self.action), self.method, format_attrs(attrs))
-    def is_valid(self):
+    def validate(self):
         """
         Returns true iff all form components validate (i.e., have no errors).
-        Calling is_valid() will cause error messages to be displayed with the form.
+        Calling validate() will cause error messages to be displayed with the form.
         """
         errors = []
         for child in self.children:
@@ -76,7 +82,7 @@ class Form(object):
     def values(self):
         """Returns a dictionary mapping input names (without the prefix)
         to values or lists of values, depending on their type.
-        This is likely incomplete unless is_valid() returns True.
+        This is likely incomplete unless validate() returns True.
         The dictionary is re-generated on the fly each time the function is called,
         so you may want to save it to a variable before using."""
         return dict((child._name, child.value) for child in self.children)
@@ -212,6 +218,21 @@ class RadioInput(BooleanInput):
     """Single radio buttons really aren't useful.  You want RadioSelect instead."""
     input_type = "radio"
 
+class Button(BooleanInput):
+    def __init__(self, form, label, name=".cmd", **kwargs):
+        """Note that the order of arguments varies from all the other inputs!
+        This is so it will do what you want in the most common case (defining a submit button).
+        Use "name" and "value" to define what gets submitted with the HTML form,
+        use "label" to define what the user sees.
+
+        action      "submit" (the default) or "reset"
+        """
+        self.action = kwargs.pop("action", "submit")
+        super(Button, self).__init__(form, name, label=label, **kwargs)
+        self.label, self._label = "", self.label # "hide" label for display
+    def html(self):
+        return u"<button type='%s' id='%s' name='%s' value='%s'%s>%s</button>" % (self.action, self.id, self.name, escape(self.checked_value), format_attrs(self.attrs), self._label)
+
 class VectorInput(Input):
     @property
     def rawvalue(self):
@@ -294,13 +315,13 @@ def not_empty(val):
 def maximum(m):
     """Maximum numeric value, inclusive."""
     def validate(val):
-        if val > m: return "Please enter a value no larger than %s" % m
+        if val > m: return "Please enter a value of at most %s" % m
     return validate
 
 def minimum(m):
     """Minimum numeric value, inclusive."""
     def validate(val):
-        if val < m: return "Please enter a value no smaller than %s" % m
+        if val < m: return "Please enter a value of at least %s" % m
     return validate
 
 def each(requirement):
@@ -336,11 +357,13 @@ def as_table(form, **kwargs):
     def add_component(component):
         if component.errors:
             errmsg = u"<ul class='%s'>\n%s\n</ul>" % (kwargs.get("error_class", u""), u"\n".join(u"<li>%s</li>" % escape(err) for err in component.errors))
+        elif component.help_text:
+            errmsg = "<div class='%s'>%s</div>" % (kwargs.get("help_class", u""), component.help_text)
         else:
             errmsg = ""
         label = u"<div class='%s'><label for='%s'>%s</label></div>" % (kwargs.get("label_class", u""), component.id, component.label)
-        if component.help_text: label = "%s<div class='%s'>%s</div>" % (label, kwargs.get("help_class", u""), component.help_text)
-        lines.append(u"<tr align='left' valign='top'><td>%s</td><td>%s</td><td>%s</td></tr>" % (label, component.html(), errmsg))
+        #if component.help_text: label = "%s<div class='%s'>%s</div>" % (label, kwargs.get("help_class", u""), component.help_text)
+        lines.append(u"<tr align='left' valign='middle'><td>%s</td><td>%s</td><td>%s</td></tr>" % (label, component.html(), errmsg))
     for component in form:
         if isinstance(component, HiddenInput):
             hiddens.append(component)
@@ -348,7 +371,7 @@ def as_table(form, **kwargs):
         if is_scalar(component):
             add_component(component)
         else:
-            lines.append(u"<tr align='left' valign='top'><td colspan='3'>%s:</td></tr>" % component.label)
+            lines.append(u"<tr align='left' valign='middle'><td colspan='3'>%s:</td></tr>" % component.label)
             for child in component: add_component(child)
     lines.append(u"</table>")
     for component in hiddens:
@@ -372,7 +395,7 @@ def testit():
     form += Select(form, "gender", choices=("male", "female"))
     form += CheckboxInput(form, "spam_me", initial=True)
     form += CheckboxSelect(form, "hobbies", choices=((1, "sky-diving"), (2, "scuba diving"), (3, "knitting")), initial=["3"], type=int)
-    print "Form is valid?", form.is_valid()
+    print "Form is valid?", form.validate()
     print as_table(form, table_attrs={'width':'100%'})
     print form.rawvalues()
     print form.values()
