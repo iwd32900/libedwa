@@ -139,7 +139,7 @@ class SubPage(object):
 
 class FormPage(object):
     def render(self, request, edwa):
-        form = forms.Form(data={"first_name":"<John>", "gender":"other"}, prefix="pfx_")
+        form = forms.Form(prefix="pfx_")
         form += forms.HiddenInput(form, "title", initial="Dr.")
         form += forms.TextInput(form, "first_name", require=[forms.not_empty])
         form += forms.PasswordInput(form, "middle_name", require=[forms.minlen(2)])

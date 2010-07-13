@@ -134,9 +134,14 @@ class Input(object):
         label       a human-readable name for this field
         help_text   a hint for the person filling out the field
         type        callable that takes a single string and returns a Python object
+                    Throwing an exception results in a value of None.
         require     a list of validation functions, which take one argument (the value)
                     and return either an error message (as a string) or None if the value is OK.
+                    Most validators should allow None as a valid value.
         initial     a fallback initial value if no data is provided to the Form
+                    If *any* data is provided to the form, the initial value is ignored,
+                    even though there may be no value for *this* input in the form data.
+                    (This is to allow e.g. checkboxes that default to True to still be set to False.)
         **kwargs    any HTML attributes that should be included, e.g. disabled=True, class_='my-css-style'
         """
         self.form = form
@@ -197,7 +202,8 @@ class ScalarInput(Input):
         val = u""
         if self.name in self.form.data:
             val = self.form.data[self.name]
-        elif hasattr(self, "_initial"):
+        # Only fall back to our internal default if no POST data was provided:
+        elif hasattr(self, "_initial") and not self.form.data:
             val = self._initial
         if not is_scalar(val): val = val[-1] # if multiple values, return the last one! (like Django)
         return val
@@ -240,10 +246,13 @@ class BooleanInput(ScalarInput):
         to_search = []
         if self.name in self.form.data:
             to_search = self.form.data[self.name]
-        elif hasattr(self, "_initial"):
+        # Only fall back to our internal default if no POST data was provided:
+        elif hasattr(self, "_initial") and not self.form.data:
             to_search = as_vector(self._initial)
         strval = unicode(self.checked_value)
-        val = any(strval == unicode(formval) for formval in to_search)
+        # Testing "formval is True" allows us to use initial=True
+        # This should be safe because POST data can only be strings, not Python True.
+        val = any((strval == unicode(formval) or formval is True) for formval in to_search)
         return bool(val)
     @property
     def value(self):
@@ -286,7 +295,8 @@ class VectorInput(Input):
         val = []
         if self.name in self.form.data:
             val = self.form.data[self.name]
-        elif hasattr(self, "_initial"):
+        # Only fall back to our internal default if no POST data was provided:
+        elif hasattr(self, "_initial") and not self.form.data:
             val = as_vector(self._initial)
         if len(val) == 1 and getattr(self, "single_selection", False):
             val = val[0]
