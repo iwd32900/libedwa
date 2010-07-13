@@ -395,28 +395,79 @@ def Time(formats=TIME_FMTS):
     return maketype
 
 ### Validation functions to use with require=[...] ###
-# Criteria to support: regex, slug, minlen/maxlen, email, url?
 
 def not_empty(val):
     """A mandatory, non-empty form field."""
     if not val: return "Please enter a value"
 
+def regex(r, error_msg=None):
+    """
+    A regular expression object or string that input must match.
+    re.search() will be called, so anchor with ^ and $ if desired.
+    The empty string will always be allowed, so pair with not_empty to prevent this.
+    """
+    if isinstance(r, basestring):
+        import re
+        r = re.compile(r)
+    def validate(val):
+        if not val: return # allow field to be empty, including the empty string
+        if not r.search(val):
+            if error_msg: return error_msg
+            else: return "Please enter a value matching /%s/" % r.pattern
+    return validate
+
+slug = regex( # just to be like Django...
+    r'^[-\w]+$',
+    "Please enter a slug (letters, numbers, hyphens, and/or underscores)")
+
+email = regex( # blatantly stolen from Django
+    r"^(?i)([-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*"  # dot-atom
+    r'|"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-011\013\014\016-\177])*"' # quoted-string
+    r')@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?$',  # domain
+    "Please enter an email address")
+
+web_url = regex( # also blatantly stolen from Django
+    r'^(?i)https?://' # http:// or https://
+    r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|' #domain...
+    r'localhost|' #localhost...
+    r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
+    r'(?::\d+)?' # optional port
+    r'(?:/?|[/?]\S+)$',
+    "Please enter a URL, starting with http:// or https://")
+
 def maximum(m):
     """Maximum numeric value, inclusive."""
     def validate(val):
+        if val is None: return # allow field to be empty
         if val > m: return "Please enter a value of at most %s" % m
     return validate
 
 def minimum(m):
     """Minimum numeric value, inclusive."""
     def validate(val):
+        if val is None: return # allow field to be empty
         if val < m: return "Please enter a value of at least %s" % m
+    return validate
+
+def maxlen(m):
+    """Maximum string length, inclusive."""
+    def validate(val):
+        if val is None: return # allow field to be empty
+        if len(val) > m: return "Please limit to %s characters" % m
+    return validate
+
+def minlen(m):
+    """Minimum string length, inclusive.  Empty string *is* permitted, unless paired with not_empty."""
+    def validate(val):
+        if not val: return # allow field to be empty, including the empty string
+        if len(val) < m: return "Please enter at least %s characters" % m
     return validate
 
 def not_before(x):
     """Set limits on date and/or time. See as_date_or_time() for possible values of x."""
     dt = as_date_or_time(x)
     def validate(val):
+        if val is None: return # allow field to be empty
         if val < dt: return "Please enter a date/time of %s or later" % x
     return validate
 
@@ -424,6 +475,7 @@ def not_after(x):
     """Set limits on date and/or time. See as_date_or_time() for possible values of x."""
     dt = as_date_or_time(x)
     def validate(val):
+        if val is None: return # allow field to be empty
         if val > dt: return "Please enter a date/time of %s or earlier" % x
     return validate
 
