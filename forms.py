@@ -1,4 +1,32 @@
 """
+Form-helper library inspired by django.forms, but addressing the following issues:
+
+- Dynamic forms are hard, because Django defaults to a declarative style.
+  We use an imperative style of adding inputs to an initially empty Form object,
+  which is nearly as terse and much more flexible.  No subclassing is required.
+
+- Dynamic forms are hard, because initialization values are also coded declaratively.
+  This particularly affects HTML <select> elements when the choices come from a database.
+  Again, our imperative approach makes this easy.
+
+- Widgets are awkward to customize, because the primary form classes are organized
+  around validating the data, rather than around the HTML elements used to gather the data.
+  This is wrong:  the set of possible HTML elements is small and fixed,
+  but the set of possible ways to validate that input and make Python objects is infinite.
+  We focus on a one-to-one mapping with HTML elements, and allow data transformation and validation
+  to be configured by passing in (lists of) functions.
+  As a side effect, this makes it easier to add and validate new constraints on form inputs.
+
+- Django forms behave differently whether they are "bound" or "unbound";
+  specifically, validation is triggered just by passing in POST data.
+  We use the same mechanism to pass initial values or POST data,
+  and trigger validation (and display of errors) explicitly by calling Form.validate().
+
+- Django forms are really designed to display using the built-in .as_p(), .as_table(), etc. functions;
+  accessing individual components (particularly radio buttons from a set of them!) is tough.
+  We try to design forms so that individual elements are easy to access and display in any way desired.
+  We offer helpers like as_table() as standalone functions that take a Form as an argument,
+  so that end-users can construct similar display helpers using the same public API we do.
 """
 
 from libedwa.html import escape, raw, format_attrs
@@ -22,7 +50,7 @@ def as_vector(x):
         return list(x)
 
 class Form(object):
-    """Basic HTML form.  To add fields, use "+=" rather than trying to subclass."""
+    """Basic HTML form.  To add fields, use "+=" rather than trying to subclass.  See set_data() for "data" and "files"."""
     def __init__(self, action="", data={}, files={}, method="POST", prefix="", id_prefix="id_", **kwargs):
         """
         data    see set_data()
@@ -39,7 +67,8 @@ class Form(object):
         data    A dictionary mapping HTML names (as strings) to lists of values.
                 Bare, non-list values will automatically be wrapped in lists.
                 This can either be initial values, or the result of form submission.
-                Calling this function replaces any values passed previously or in the constructor.
+                Calling this function replaces any values passed previously or in the constructor,
+                and overrides any values passed to individual inputs as initial=...
                 In Django, try dict(request.POST.lists()).
         files   A dictionary mapping HTML names (as strings) to file-like objects.
                 These will be wrapped in lists (like data) for consistency sake.
