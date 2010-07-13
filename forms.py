@@ -259,7 +259,7 @@ class RadioInput(BooleanInput):
     input_type = "radio"
 
 class Button(BooleanInput):
-    def __init__(self, form, label, name=".cmd", **kwargs):
+    def __init__(self, form, label, name="-submit", **kwargs):
         """Note that the order of arguments varies from all the other inputs!
         This is so it will do what you want in the most common case (defining a submit button).
         Use "name" and "value" to define what gets submitted with the HTML form,
