@@ -74,6 +74,7 @@ class Form(object):
                 These will be wrapped in lists (like data) for consistency sake.
                 In Django, try request.FILES.
         """
+        data = data or {} # in case None is passed
         if files:
             data = dict(data) # make a copy
             data.update(files) # include info about uploaded files
@@ -138,6 +139,7 @@ class Input(object):
         require     a list of validation functions, which take one argument (the value)
                     and return either an error message (as a string) or None if the value is OK.
                     Most validators should allow None as a valid value.
+        required    if True (the default), prepends not_empty to the list of requirements for validation.
         initial     a fallback initial value if no data is provided to the Form
                     If *any* data is provided to the form, the initial value is ignored,
                     even though there may be no value for *this* input in the form data.
@@ -152,6 +154,7 @@ class Input(object):
         self.help_text = kwargs.pop("help_text", None)
         self.type = kwargs.pop("type", unicode)
         self.require = kwargs.pop("require", [])
+        if kwargs.pop("required", True): self.require = [not_empty] + self.require
         if "initial" in kwargs: self._initial = kwargs.pop("initial")
         self.attrs = kwargs
         self.errors = None # list of error messages, if any, pre-escaped for HTML special chars
@@ -235,9 +238,11 @@ class FileInput(ScalarInput):
         return u"<input type='file' id='%s' name='%s'%s />" % (self.id, self.name, format_attrs(self.attrs))
 
 class BooleanInput(ScalarInput):
-    """A control that returns False when unchecked, and a specified non-false value when checked."""
+    """A control that returns False when unchecked, and a specified non-false value when checked.
+    Unlike most controls, these controls are not required by default."""
     def __init__(self, form, name, value=True, **kwargs):
         kwargs["type"] = bool
+        kwargs.setdefault("required", False) # unless specifically set to True by the caller
         super(BooleanInput, self).__init__(form, name, **kwargs)
         self.checked_value = value
     @property
