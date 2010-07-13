@@ -14,7 +14,8 @@ class raw(object):
 
 def escape(obj):
     "Escape HTML special chars in the string form of obj, unless obj is wrapped in raw()."
-    if isinstance(obj, raw): return unicode(obj.obj)
+    if obj is None: return u"" # because the string "None" evaluates to True, while "" is False
+    elif isinstance(obj, raw): return unicode(obj.obj)
     # Whitelist classes we know are safe to not escape, AND that have special printf formatting codes.
     # All others should be escaped for proper display (e.g. many objects use angle brackets in their str/repr form).
     elif isinstance(obj, (int,long,float)): return obj

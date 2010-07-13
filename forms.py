@@ -236,7 +236,7 @@ class FileInput(ScalarInput):
 
 class BooleanInput(ScalarInput):
     """A control that returns False when unchecked, and a specified non-false value when checked."""
-    def __init__(self, form, name, value=1, **kwargs):
+    def __init__(self, form, name, value=True, **kwargs):
         kwargs["type"] = bool
         super(BooleanInput, self).__init__(form, name, **kwargs)
         self.checked_value = value
