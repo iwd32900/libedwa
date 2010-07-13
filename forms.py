@@ -170,8 +170,13 @@ class Input(object):
             self._value = self.objectify(self.rawvalue)
         except Exception, ex:
             self._value = None
-            self.errors.append(unicode(ex))
-            return self._value
+            # Type conversion failure on the empty value is OK (maybe, see require=[not_empty]),
+            # but type conversion failure on a non-empty value is an error.
+            if self.rawvalue:
+                self.errors.append(unicode(ex))
+                # Although most validators allow None, so we wouldn't *have* to short-circuit,
+                # validators like not_empty will produce a confusing value in response to this None.
+                return self._value
         # If coerced successfully, apply the 'require' criteria (if any).
         for requirement in self.require:
             err = requirement(self._value)
