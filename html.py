@@ -40,9 +40,7 @@ def format_attrs(attrs):
 class Tag(object):
     """A supporting object for Tagger, representing one HTML tag.  Not used directly by clients."""
     def __init__(self, tagger, tagname, no_close=False):
-        """If no_close is True, the tag will be like <BR /> instead of <BR>...</BR>.
-        The value of no_close is disregarded if the tag is used in a with statement,
-        which always implies nesting!"""
+        """If no_close is True, the tag will be like <BR /> instead of <BR>...</BR>."""
         self.tagger = tagger
         self.tagname = tagname
         self.no_close = no_close
