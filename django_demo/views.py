@@ -144,6 +144,7 @@ class FormPage(object):
         form += forms.TextInput(form, "first_name", require=[forms.not_empty])
         form += forms.PasswordInput(form, "middle_name", require=[forms.not_empty])
         form += forms.TextInput(form, "last_name", initial='"Doe"', require=[forms.not_empty])
+        form += forms.TextInput(form, "birthday", type=forms.Date(), require=[forms.not_empty, forms.not_before("Jan 1, 1900"), forms.not_after("Jan 1, 2010")])
         form += forms.TextInput(form, "num_children", help_text="How many children?", type=int, require=[forms.minimum(0), forms.maximum(20)], initial="-1")
         form += forms.Select(form, "gender", choices=("male", "female"))
         form += forms.CheckboxInput(form, "spam_me", initial=True)

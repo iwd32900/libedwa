@@ -164,16 +164,18 @@ class Input(object):
         # Enter validation mode. Start accumulating error messages.
         self.errors = []
         # Try to coerce the string form into a Python object.
+        # Do not escape error messages here: they will be escaped before output.
+        # This means they're still readable for e.g. console output.
         try:
             self._value = self.objectify(self.rawvalue)
         except Exception, ex:
             self._value = None
-            self.errors.append(escape(ex))
+            self.errors.append(unicode(ex))
             return self._value
         # If coerced successfully, apply the 'require' criteria (if any).
         for requirement in self.require:
             err = requirement(self._value)
-            if err: self.errors.append(escape(err))
+            if err: self.errors.append(unicode(err))
         if self.errors: self._value = None
         return self._value
     def objectify(self, value):
@@ -346,7 +348,54 @@ class CheckboxSelect(ChoiceInput):
     def __iter__(self):
         for child in self.children: yield child
 
+### Input types for use with type=... ###
+
+# Be careful of listing too many, because DATE_TIME_FMTS includes all combinations of the two!
+DATE_FMTS = ["%Y-%m-%d", "%m/%d/%Y", "%b %d, %Y", "%d %b %Y"] # 2006-10-25; 10/25/2006; Oct 25, 2006; 25 Oct 2006
+TIME_FMTS = ["%H:%M:%S", "%H:%M", "%I:%M:%S%p", "%I:%M:%S %p", "%I:%M%p", "%I:%M %p"] # 14:30:59; 14:30; 2:30:59pm; 2:30:59 pm; 2:30pm; 2:30 pm (am,pm == AM,PM)
+DATE_TIME_FMTS = [" ".join((d, t)) for d in DATE_FMTS for t in TIME_FMTS] + [" ".join((t, d)) for d in DATE_FMTS for t in TIME_FMTS] # "date time", then "time date"
+
+def as_date_or_time(x):
+    """'x' should be a date, time, or datetime object from the datetime module,
+    or a string matching one of the default allowed formats."""
+    if not isinstance(x, basestring): return x
+    import datetime as dt
+    # Try simple date and time first, because there are fewer of those to check!
+    for format in DATE_FMTS:
+        try: return dt.datetime.strptime(x, format).date()
+        except ValueError: pass
+    for format in TIME_FMTS:
+        try: return dt.datetime.strptime(x, format).time()
+        except ValueError: pass
+    for format in DATE_TIME_FMTS:
+        try: return dt.datetime.strptime(x, format)
+        except ValueError: pass
+    raise ValueError("Cannot interpret '%s' as a date/time" % x)
+
+def DateTime(formats=DATE_TIME_FMTS):
+    formats = as_vector(formats)
+    def maketype(text):
+        import datetime as dt
+        for format in formats:
+            try: return dt.datetime.strptime(text, format)
+            except ValueError: pass
+        raise ValueError("Cannot interpret '%s' as a date/time" % text)
+    return maketype
+
+def Date(formats=DATE_FMTS):
+    f = DateTime(formats)
+    def maketype(text):
+        return f(text).date()
+    return maketype
+
+def Time(formats=TIME_FMTS):
+    f = DateTime(formats)
+    def maketype(text):
+        return f(text).time()
+    return maketype
+
 ### Validation functions to use with require=[...] ###
+# Criteria to support: regex, slug, minlen/maxlen, email, url?
 
 def not_empty(val):
     """A mandatory, non-empty form field."""
@@ -362,6 +411,20 @@ def minimum(m):
     """Minimum numeric value, inclusive."""
     def validate(val):
         if val < m: return "Please enter a value of at least %s" % m
+    return validate
+
+def not_before(x):
+    """Set limits on date and/or time. See as_date_or_time() for possible values of x."""
+    dt = as_date_or_time(x)
+    def validate(val):
+        if val < dt: return "Please enter a date/time of %s or later" % x
+    return validate
+
+def not_after(x):
+    """Set limits on date and/or time. See as_date_or_time() for possible values of x."""
+    dt = as_date_or_time(x)
+    def validate(val):
+        if val > dt: return "Please enter a date/time of %s or earlier" % x
     return validate
 
 def each(requirement):
@@ -418,10 +481,6 @@ def as_table(form, **kwargs):
         lines.append(component.html())
     lines.append(u"</form>")
     return u"\n".join(lines)
-
-### TODO ###
-# Types to support: date, time, datetime
-# Criteria to support: regex, slug, minlen/maxlen, email, url?
 
 ### Testing code, should eventually be (re)moved ###
 
