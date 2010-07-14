@@ -321,15 +321,16 @@ class ChoiceInput(VectorInput):
                 or a list of (value, human_readable) tuples.
     """
     def __init__(self, form, name, **kwargs):
-        self.choices = []
-        for choice in kwargs.pop('choices', []):
-            if isinstance(choice, Choice):
-                self.choices.append(choice)
-            elif isinstance(choice, (list,tuple)):
-                self.choices.append(Choice(*choice))
-            else:
-                self.choices.append(Choice(choice))
+        choice_list = kwargs.pop('choices', [])
         super(ChoiceInput, self).__init__(form, name, **kwargs)
+        self.choices = []
+        for choice in choice_list:
+            if isinstance(choice, Choice): pass
+            elif isinstance(choice, (list,tuple)): choice = Choice(*choice)
+            else: choice = Choice(choice)
+            if choice.value != self.type(choice.value):
+                raise ValueError("Choice (%r, %r) is type %s, not type %s" % (choice.value, choice.label, type(choice.value), self.type))
+            self.choices.append(choice)
         self.require.append(in_choices(self.choices))
 
 class Select(ChoiceInput):
@@ -526,9 +527,12 @@ def as_table(form, **kwargs):
     error_class     CSS class(es) for the UL containing any errors
     label_class     CSS class(es) for the DIV containing the field label
     help_class      CSS class(es) for the DIV containing the help text
+    edwa_action     result of edwa.form_action() or similar for inclusion
     """
     hiddens = []
-    lines = [form.html(), u"<table%s>" % format_attrs(kwargs.get("table_attrs", {}))]
+    lines = [form.html(),
+        kwargs.get("edwa_action", u""),
+        u"<table%s>" % format_attrs(kwargs.get("table_attrs", {}))]
     def add_component(component):
         if component.errors:
             errmsg = u"<ul class='%s'>\n%s\n</ul>" % (kwargs.get("error_class", u""), u"\n".join(u"<li>%s</li>" % escape(err) for err in component.errors))
