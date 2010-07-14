@@ -136,6 +136,12 @@ class Input(object):
         help_text   a hint for the person filling out the field
         type        callable that takes a single string and returns a Python object
                     Throwing an exception results in a value of None.
+                    If type.untype exists, it will be called on the results of rawvalue before they are returned.
+                    This allows rawvalue to format objects (e.g. datetimes) as strings,
+                    in a form that can later be parsed by type() to recreate the object.
+                    Type.untype() is only needed when "initial=object" and "object != type(str(object))".
+                    It will sometimes be passed strings (so it should do nothing), and will get scalars, not lists.
+                    See DateTime (below) for an example.
         require     a list of validation functions, which take one argument (the value)
                     and return either an error message (as a string) or None if the value is OK.
                     Most validators should allow None as a valid value.
@@ -209,6 +215,8 @@ class ScalarInput(Input):
         elif hasattr(self, "_initial") and not self.form.data:
             val = self._initial
         if not is_scalar(val): val = val[-1] # if multiple values, return the last one! (like Django)
+        if hasattr(self.type, "untype"):
+            val = self.type.untype(val)
         return val
     def objectify(self, value):
         return self.type(value)
@@ -258,6 +266,7 @@ class BooleanInput(ScalarInput):
         # Testing "formval is True" allows us to use initial=True
         # This should be safe because POST data can only be strings, not Python True.
         val = any((strval == unicode(formval) or formval is True) for formval in to_search)
+        # Deliberately ignores self.type.untype, even if it's present.
         return bool(val)
     @property
     def value(self):
@@ -303,6 +312,9 @@ class VectorInput(Input):
         # Only fall back to our internal default if no POST data was provided:
         elif hasattr(self, "_initial") and not self.form.data:
             val = as_vector(self._initial)
+        if hasattr(self.type, "untype"):
+            fmt = self.type.untype
+            val = [fmt(v) for v in val]
         if len(val) == 1 and getattr(self, "single_selection", False):
             val = val[0]
         return val
@@ -401,18 +413,24 @@ def DateTime(formats=DATE_TIME_FMTS):
             try: return dt.datetime.strptime(text, format)
             except ValueError: pass
         raise ValueError("Cannot interpret '%s' as a date/time" % text)
+    def untype(obj): # so that datatime objs can be provided to initial=...
+        try: return obj.strftime(formats[0])
+        except: return obj
+    maketype.untype = untype # yes Virginia, you *can* do that to a Python function!
     return maketype
 
 def Date(formats=DATE_FMTS):
     f = DateTime(formats)
     def maketype(text):
         return f(text).date()
+    maketype.untype = f.untype
     return maketype
 
 def Time(formats=TIME_FMTS):
     f = DateTime(formats)
     def maketype(text):
         return f(text).time()
+    maketype.untype = f.untype
     return maketype
 
 ### Validation functions to use with require=[...] ###
