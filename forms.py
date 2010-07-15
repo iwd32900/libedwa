@@ -306,6 +306,7 @@ class Button(BooleanInput):
         return u"<button type='%s' id='%s' name='%s' value='%s'%s>%s</button>" % (self.action, self.id, self.name, escape(self.checked_value), format_attrs(self.attrs), self._label)
 
 class VectorInput(Input):
+    single_selection = False
     @property
     def rawvalue(self):
         val = []
@@ -317,7 +318,11 @@ class VectorInput(Input):
         if hasattr(self.type, "untype"):
             fmt = self.type.untype
             val = [fmt(v) for v in val]
-        if len(val) == 1 and getattr(self, "single_selection", False):
+        return val
+    @property
+    def value(self):
+        val = super(VectorInput, self).value
+        if len(val) == 1 and self.single_selection:
             val = val[0]
         return val
     def objectify(self, value):
@@ -348,16 +353,19 @@ class ChoiceInput(VectorInput):
         self.require.append(in_choices(self.choices))
 
 class Select(ChoiceInput):
-    """Defaults to single selection -- include multiple=True to allow multiple selection.
-    Select.values is always a list, even when multiple=False."""
+    """Defaults to single selection -- include multiple=True to allow multiple selection."""
+    def __init__(self, form, name, **kwargs):
+        self.single_selection = kwargs.get("multiple", False)
+        super(Select, self).__init__(form, name, **kwargs)
     def html(self):
-        selected = set(escape(v) for v in self.rawvalue)
+        selected = set(unicode(v) for v in self.rawvalue)
         lines = []
         lines.append(u"<select id='%s' name='%s'%s>" % (self.id, self.name, format_attrs(self.attrs)))
         for choice in self.choices:
-            value, label = escape(choice.value), escape(choice.label)
-            is_selected = (u" selected='selected'" if value in selected else u"")
-            lines.append(u"<option value='%s'%s>%s</option>" % (value, is_selected, label))
+            val = unicode(choice.value)
+            is_selected = (u" selected='selected'" if val in selected else u"")
+            print "%s ?in? %s" % (val, selected)
+            lines.append(u"<option value='%s'%s>%s</option>" % (escape(choice.value), is_selected, escape(choice.label)))
         lines.append(u"</select>")
         return u"\n".join(lines)
 
@@ -583,7 +591,7 @@ def as_table(form, css=u"edwa-"):
             lines.append(u"<tr valign='top' class='%srow%s'><th align='right'>%s</th><td><div class='%sinput'>%s</div><div class='%smsgs'>%s%s</div></td></tr>" % (
                 css, row_idx, label, css, component.html(), css, help, errors))
         else: # nested table for RadioSelect and CheckboxSelect
-            lines.append(u"<tr valign='middle' class='%srow%s'><th align='right'>%s:</th><td><table border='0' cellspacing='0' cellpadding='0'>" % (css, row_idx, component.label))
+            lines.append(u"<tr valign='middle' class='%srow%s'><th align='right'>%s</th><td><table border='0' cellspacing='0' cellpadding='0'>" % (css, row_idx, component.label))
             for child in component:
                 label, help, errors = component_divs(child, css=css+"sub")
                 lines.append(u"<tr valign='top' class='%srow%s'><td><div class='%ssubinput'>%s</div></td><th align='left'>%s</th><td><div class='%ssubmsgs'>%s%s</div></td></tr>" % (
