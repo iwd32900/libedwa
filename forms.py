@@ -446,8 +446,12 @@ def Time(formats=TIME_FMTS):
 
 def not_empty(val):
     """A mandatory, non-empty form field."""
-    # Zero is a legit value but evaluates to False...
-    if not val and val != 0: return "Please enter a value"
+    # This is surprisingly hard to get right.
+    # Zero is a legit value but "not 0" is true.
+    # Also 0 == False and 0 in [False, ...] are both true (!)
+    # However "0 is False" is false, as expected
+    if val is None or val is False or val in ("", u"", [], tuple(), {}):
+        return "This field is required"
 
 def regex(r, error_msg=None):
     """

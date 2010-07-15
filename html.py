@@ -139,6 +139,9 @@ class Tagger(object):
                 try: fmtvars = tuple(escape(v) for v in fmtvars)
                 except TypeError: fmtvars = escape(fmtvars) # guess it wasn't iterable after all! (int, bool, etc.)
             self._raw(unicode(content_or_fmtstr) % fmtvars)
+    def __getitem__(self, raw_content):
+        """A total abuse of notation: use [] to output un-escaped HTML."""
+        self(raw(raw_content))
     def __getattr__(self, tagname):
         return Tag(self, tagname, no_close=(tagname.lower() in _NOCLOSE_TAGS))
 

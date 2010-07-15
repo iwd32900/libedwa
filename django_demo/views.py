@@ -141,27 +141,44 @@ class FormPage(object):
     def render(self, request, edwa):
         form = forms.Form(prefix="pfx_")
         form += forms.HiddenInput(form, "title", initial="Dr.")
-        form += forms.TextInput(form, "first_name", require=[forms.not_empty])
-        form += forms.PasswordInput(form, "middle_name", require=[forms.minlen(2)])
-        form += forms.TextInput(form, "last_name", initial='"Doe"', require=[forms.not_empty])
-        form += forms.TextInput(form, "birthday", type=forms.Date(), require=[forms.not_empty, forms.not_before("Jan 1, 1900"), forms.not_after("Jan 1, 2010")])
+        form += forms.TextInput(form, "first_name")
+        form += forms.PasswordInput(form, "middle_name", required=False, require=[forms.minlen(2)])
+        form += forms.TextInput(form, "last_name", initial='"Doe"', )
+        form += forms.TextInput(form, "birthday", type=forms.Date(), require=[forms.not_before("Jan 1, 1900"), forms.not_after("Jan 1, 2010")])
         form += forms.TextInput(form, "num_children", help_text="How many children?", type=int, require=[forms.minimum(0), forms.maximum(20)], initial="-1")
         form += forms.Select(form, "gender", choices=("male", "female"))
-        form += forms.CheckboxInput(form, "spam_me", initial=True)
+        form += forms.CheckboxInput(form, "spam_me", initial=True, required=True)
         form += forms.CheckboxSelect(form, "hobbies", choices=((1, "sky-diving"), (2, "scuba diving"), (3, "knitting")), initial=["3"], type=int)
-        form += forms.TextInput(form, "email", require=[forms.email])
-        form += forms.TextInput(form, "web_site", require=[forms.web_url])
-        form += forms.FileInput(form, "resume")
+        form += forms.TextInput(form, "email", required=False, require=[forms.email])
+        form += forms.TextInput(form, "web_site", required=False, require=[forms.web_url])
+        form += forms.FileInput(form, "resume", required=False)
         form += forms.Button(form, "Validate")
         if request.method == "POST":
             form.set_data(dict(request.POST.lists()), request.FILES)
             form.validate() # trigger validation and error display
         response = HttpResponse()
         t = html.Tagger(response, indent=2)
-        with t.html.body:
-            t(html.raw(forms.as_table(form)))
-            t.hr("")
-            t.p(form.validate())
-            t.p(form.rawvalues())
-            t.p(form.values())
+        with t.html:
+            t.head.style("""
+.edwa-row0 {}
+.edwa-row1 { background:#f4f4f4; }
+.edwa-label { text-align:right; padding:0.3em; }
+.edwa-input, .edwa-choices { float:left; margin-right:2em; padding:0.3em; }
+.edwa-msgs { float:left; padding:0.3em; }
+.edwa-help { font-style:italic; }
+.edwa-error { color:#c00; }
+.edwa-error ul { margin:0; padding:0; list-style:none; }
+
+.edwa-choices .edwa-label { text-align:left; }
+.edwa-choices .edwa-input { float:none; margin-right:0; }
+""", type="text/css", media="all")
+            with t.body:
+                t[form.html()] # this is short for t(html.raw(...))
+                with t.table(border=0, cellspacing=0, cellpadding=0):
+                    t[forms.as_table(form)]
+                t["</form>"]
+                t.hr("")
+                t.p(form.validate())
+                t.p(form.rawvalues())
+                t.p(form.values())
         return response
