@@ -364,7 +364,6 @@ class Select(ChoiceInput):
         for choice in self.choices:
             val = unicode(choice.value)
             is_selected = (u" selected='selected'" if val in selected else u"")
-            print "%s ?in? %s" % (val, selected)
             lines.append(u"<option value='%s'%s>%s</option>" % (escape(choice.value), is_selected, escape(choice.label)))
         lines.append(u"</select>")
         return u"\n".join(lines)
