@@ -322,7 +322,7 @@ class VectorInput(Input):
     @property
     def value(self):
         val = super(VectorInput, self).value
-        if len(val) == 1 and self.single_selection:
+        if val is not None and len(val) == 1 and self.single_selection:
             val = val[0]
         return val
     def objectify(self, value):
@@ -355,7 +355,7 @@ class ChoiceInput(VectorInput):
 class Select(ChoiceInput):
     """Defaults to single selection -- include multiple=True to allow multiple selection."""
     def __init__(self, form, name, **kwargs):
-        self.single_selection = kwargs.get("multiple", False)
+        self.single_selection = not kwargs.get("multiple", False)
         super(Select, self).__init__(form, name, **kwargs)
     def html(self):
         selected = set(unicode(v) for v in self.rawvalue)
@@ -446,7 +446,8 @@ def Time(formats=TIME_FMTS):
 
 def not_empty(val):
     """A mandatory, non-empty form field."""
-    if not val: return "Please enter a value"
+    # Zero is a legit value but evaluates to False...
+    if not val and val != 0: return "Please enter a value"
 
 def regex(r, error_msg=None):
     """
@@ -590,12 +591,14 @@ def as_table(form, css=u"edwa-"):
             lines.append(u"<tr valign='top' class='%srow%s'><th align='right'>%s</th><td><div class='%sinput'>%s</div><div class='%smsgs'>%s%s</div></td></tr>" % (
                 css, row_idx, label, css, component.html(), css, help, errors))
         else: # nested table for RadioSelect and CheckboxSelect
-            lines.append(u"<tr valign='middle' class='%srow%s'><th align='right'>%s</th><td><table border='0' cellspacing='0' cellpadding='0'>" % (css, row_idx, component.label))
+            lines.append(u"<tr valign='middle' class='%srow%s'><th align='right'>%s</th><td><div class='%schoices'><table border='0' cellspacing='0' cellpadding='0'>" % (
+                css, row_idx, component.label, css))
             for child in component:
-                label, help, errors = component_divs(child, css=css+"sub")
-                lines.append(u"<tr valign='top' class='%srow%s'><td><div class='%ssubinput'>%s</div></td><th align='left'>%s</th><td><div class='%ssubmsgs'>%s%s</div></td></tr>" % (
+                label, help, errors = component_divs(child, css=css)
+                lines.append(u"<tr valign='top' class='%srow%s'><td><div class='%sinput'>%s</div></td><td align='left'>%s</td><td><div class='%smsgs'>%s%s</div></td></tr>" % (
                     css, row_idx, css, child.html(), label, css, help, errors))
-            lines.append(u"</table></td></tr>")
+            label, help, errors = component_divs(component, css=css)
+            lines.append(u"</table></div><div class='%smsgs'>%s%s</div></td></tr>" % (css, help, errors))
         row_idx = (row_idx + 1) % 2
     return u"\n".join(lines)
 
