@@ -27,6 +27,8 @@ Form-helper library inspired by django.forms, but addressing the following issue
   We try to design forms so that individual elements are easy to access and display in any way desired.
   We offer helpers like as_table() as standalone functions that take a Form as an argument,
   so that end-users can construct similar display helpers using the same public API we do.
+
+For example code, see libedwa.django_demo.views.
 """
 
 from libedwa.html import escape, raw, format_attrs
@@ -539,58 +541,54 @@ def in_choices(choices):
 
 ### Display helpers for quickly generating HTML ###
 
-def as_table(form, **kwargs):
+def component_divs(component, div=u"div", css=u"edwa-"):
     """
-    table_attrs     dictionary of attributes (like 'class', 'cellspacing', etc.) for the TABLE tag
-    error_class     CSS class(es) for the UL containing any errors
-    label_class     CSS class(es) for the DIV containing the field label
-    help_class      CSS class(es) for the DIV containing the help text
-    edwa_action     result of edwa.form_action() or similar for inclusion
+    Returns three <div> elements enclosing the label, help message, and any errors, respectively.
+    Any empty string may be returned in place of any of these if there is no content.
+    The <div>s are assigned CSS classes of edwa-label, edwa-help, and edwa-error.
+    You can change the "edwa-" to something else with the "css" parameter.
     """
-    hiddens = []
-    lines = [form.html(),
-        kwargs.get("edwa_action", u""),
-        u"<table%s>" % format_attrs(kwargs.get("table_attrs", {}))]
-    def add_component(component):
-        if component.errors:
-            errmsg = u"<ul class='%s'>\n%s\n</ul>" % (kwargs.get("error_class", u""), u"\n".join(u"<li>%s</li>" % escape(err) for err in component.errors))
-        elif component.help_text:
-            errmsg = "<div class='%s'>%s</div>" % (kwargs.get("help_class", u""), component.help_text)
-        else:
-            errmsg = ""
-        label = u"<div class='%s'><label for='%s'>%s</label></div>" % (kwargs.get("label_class", u""), component.id, component.label)
-        #if component.help_text: label = "%s<div class='%s'>%s</div>" % (label, kwargs.get("help_class", u""), component.help_text)
-        lines.append(u"<tr align='left' valign='middle'><td>%s</td><td>%s</td><td>%s</td></tr>" % (label, component.html(), errmsg))
+    label_div, help_div, error_div = u"", u"", u""
+    if component.label:
+        label_div = u"<div class='%slabel'><label for='%s'>%s</label></div>" % (css, component.id, component.label)
+    if component.help_text:
+        help_div = u"<div class='%shelp'>%s</div>" % (css, component.help_text)
+    if component.errors:
+        err_lines = [u"<div class='%serror'>" % css]
+        err_lines.append(u"<ul>")
+        err_lines.extend(u"<li>%s</li>" % escape(err) for err in component.errors)
+        err_lines.append(u"</ul>")
+        err_lines.append(u"</div>")
+        error_div = u"\n".join(err_lines)
+    return (label_div, help_div, error_div)
+
+def as_table(form, css=u"edwa-"):
+    """
+    Formats the form as a two-column table.
+    No <form> or <table> tags are generated -- you must provide those!
+    <tr> are given alternating styles edwa-row0 and edwa-row1.
+    Help text + errors are wrapped in a <div> of class edwa-msgs,
+    and the actual form control is wrapped in a edwa-input <div>.
+    """
+    lines = []
+    row_idx = 0
     for component in form:
         if isinstance(component, HiddenInput):
-            hiddens.append(component)
+            # These will create a small gap if placed between visisble components,
+            # unless cellspacing=0 and cellpadding=0.
+            lines.append(u"<tr><td colspan='2'>%s</td></tr>" % component.html())
             continue
-        if is_scalar(component):
-            add_component(component)
-        else:
-            lines.append(u"<tr align='left' valign='middle'><td colspan='3'>%s:</td></tr>" % component.label)
-            for child in component: add_component(child)
-    lines.append(u"</table>")
-    for component in hiddens:
-        lines.append(component.html())
-    lines.append(u"</form>")
+        elif is_scalar(component):
+            label, help, errors = component_divs(component, css=css)
+            lines.append(u"<tr valign='top' class='%srow%s'><th align='right'>%s</th><td><div class='%sinput'>%s</div><div class='%smsgs'>%s%s</div></td></tr>" % (
+                css, row_idx, label, css, component.html(), css, help, errors))
+        else: # nested table for RadioSelect and CheckboxSelect
+            lines.append(u"<tr valign='middle' class='%srow%s'><th align='right'>%s:</th><td><table border='0' cellspacing='0' cellpadding='0'>" % (css, row_idx, component.label))
+            for child in component:
+                label, help, errors = component_divs(child, css=css+"sub")
+                lines.append(u"<tr valign='top' class='%srow%s'><td><div class='%ssubinput'>%s</div></td><th align='left'>%s</th><td><div class='%ssubmsgs'>%s%s</div></td></tr>" % (
+                    css, row_idx, css, child.html(), label, css, help, errors))
+            lines.append(u"</table></td></tr>")
+        row_idx = (row_idx + 1) % 2
     return u"\n".join(lines)
-
-### Testing code, should eventually be (re)moved ###
-
-def testit():
-    form = Form(data={"first_name":"<John>", "gender":"other"}, prefix="pfx_")
-    form += HiddenInput(form, "title", initial="Dr.")
-    form += TextInput(form, "first_name", require=[not_empty])
-    form += PasswordInput(form, "middle_name", require=[not_empty])
-    form += TextInput(form, "last_name", initial='"Doe"', require=[not_empty])
-    form += TextInput(form, "num_children", help_text="How many children?", type=int, require=[minimum(0), maximum(20)], initial="-1")
-    form += Select(form, "gender", choices=("male", "female"))
-    form += CheckboxInput(form, "spam_me", initial=True)
-    form += CheckboxSelect(form, "hobbies", choices=((1, "sky-diving"), (2, "scuba diving"), (3, "knitting")), initial=["3"], type=int)
-    print "Form is valid?", form.validate()
-    print as_table(form, table_attrs={'width':'100%'})
-    print form.rawvalues()
-    print form.values()
-    return form
 
