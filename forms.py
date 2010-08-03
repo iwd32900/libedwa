@@ -36,6 +36,7 @@ from libedwa.html import escape, raw, format_attrs
 def is_scalar(x):
     """False if x is a list-like iterable (list, tuple, etc.), but True if x is a string or other scalar."""
     if isinstance(x, basestring): return True
+    if hasattr(x, "keys") and hasattr(x, "values"): return True
     try:
         iter(x)
         return False
@@ -102,15 +103,10 @@ class Form(object):
         Returns true iff all form components validate (i.e., have no errors).
         Calling validate() will cause error messages to be displayed with the form.
         """
-        errors = []
+        valid = True
         for child in self.children:
-            child.value
-            errors += child.errors
-            if not is_scalar(child):
-                for grandchild in child:
-                    grandchild.value
-                    # these errors have already been included in the child
-        return not errors
+            valid = valid and child.validate()
+        return valid
     def rawvalues(self):
         """Returns a dictionary mapping input names (without the prefix)
         to values or lists of values, depending on their type.
@@ -165,7 +161,7 @@ class Input(object):
         if kwargs.pop("required", True): self.require = [not_empty] + self.require
         if "initial" in kwargs: self._initial = kwargs.pop("initial")
         self.attrs = kwargs
-        self.errors = None # list of error messages, if any, pre-escaped for HTML special chars
+        self.errors = None # list of error messages, if any, not yet escaped for HTML special chars
     @property
     def rawvalue(self):
         """The value as provided to the Form, without any kind of transformation or validation."""
@@ -205,6 +201,12 @@ class Input(object):
     def html(self):
         """Render the component as an HTML string."""
         raise NotImplementedError()
+    def validate(self):
+        """Checks to see if this control has errors in interpretting its value."""
+        self.value
+        if not is_scalar(self):
+            for child in self: child.value
+        return not self.errors
 
 class ScalarInput(Input):
     """Any form component that takes on at most one value."""
