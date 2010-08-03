@@ -105,7 +105,7 @@ class Form(object):
         """
         valid = True
         for child in self.children:
-            valid = valid and child.validate()
+            valid &= child.validate()
         return valid
     def rawvalues(self):
         """Returns a dictionary mapping input names (without the prefix)
