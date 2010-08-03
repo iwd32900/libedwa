@@ -66,7 +66,7 @@ class NestedForm(Form):
             elif mode == "jsonvalues":
                 def prop(child):
                     p = (child.jsonvalues() if hasattr(child, "jsonvalues") else child.rawvalue)
-                    if child.errors: p = {"value":p, "errors":child.errors}
+                    if child.errors and not isinstance(child, NestedForm): p = {"value":p, "errors":child.errors}
                     return p
             elif mode == "values":
                 def prop(child):
