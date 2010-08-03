@@ -3,6 +3,7 @@ Advanced forms library allowing "nesting" one form inside another.
 Uses JavaScript and JQuery (1.4+) to return results in JSON format.
 """
 import uuid
+from copy import deepcopy
 try: import json
 except ImportError: import simplejson as json
 
@@ -17,6 +18,7 @@ class NestedForm(Form):
         self.errors = None
         self.require = kwargs.pop("require", [])
         self._valid = False
+        self.kids = None # a list of deep copies of self.children
         if kwargs.pop("required", True): self.require = [not_empty] + self.require
         super(NestedForm, self).__init__(**kwargs)
     def set_data(self, data=[], files=None):
@@ -27,6 +29,8 @@ class NestedForm(Form):
         # Make sure keys are prefixed with the form-wide prefix.
         # Make sure values are lists -- convert bare values into single-item lists.
         self.data = [dict(((k if k.startswith(self.prefix) else self.prefix+k), as_vector(v)) for k, v in datum.iteritems()) for datum in data]
+        # Need to re-initialize the subforms
+        self.kids = None
     def rawvalues(self):
         return self._values_impl("rawvalues")
     def jsonvalues(self):
@@ -39,7 +43,6 @@ class NestedForm(Form):
         # Enter validation mode. Start accumulating error messages.
         self.errors = []
         self._valid = True
-        # Try to coerce the string form into a Python object.
         # Do not escape error messages here: they will be escaped before output.
         # This means they're still readable for e.g. console output.
         try:
@@ -56,8 +59,17 @@ class NestedForm(Form):
             self._valid = False
         return self._value
     def _values_impl(self, mode):
+        if self.kids is None:
+            self.kids = []
+            for datum in self.data:
+                new_kids = deepcopy(self.children)
+                for kid in new_kids:
+                    # Otherwise, kid.form points to a new, copied form object:
+                    if hasattr(kid, "form"): kid.form = self
+                    # This is the proper time to set data, so it isn't re-set unnecessarily.
+                    if isinstance(kid, NestedForm): kid.set_data(datum.get(kid._name))
+                self.kids.append(new_kids)
         vals = []
-        subforms = [child for child in self if isinstance(child, NestedForm)]
         all_data = self.data
         try:
             # Define mode of data retrieval and error handling / validation
@@ -73,11 +85,11 @@ class NestedForm(Form):
                     self._valid &= child.validate()
                     return child.value
             else: assert False, "Unknown mode of operation!"
-            # Cycle through each dataset in the array and process it
-            for datum in all_data:
+            # Cycle through each dataset in the array and process it.
+            # Each dataset is processed with a clean copy of the child fields.
+            for datum, children in zip(all_data, self.kids):
                 self.data = datum
-                for child in subforms: child.set_data(datum.get(child._name))
-                vals.append(dict((child._name, prop(child)) for child in self.children))
+                vals.append(dict((child._name, prop(child)) for child in children))
         finally:
             self.data = all_data
         if mode == "jsonvalues" and self.errors:
@@ -134,7 +146,7 @@ def path_to_jsonforms_js():
     return p.abspath(p.join(p.dirname(__file__), "jsonforms.js"))
 
 def test_me():
-    pet_form = NestedForm("pets")
+    pet_form = NestedForm("pets", required=False)
     pet_form += TextInput(pet_form, "name")
     pet_form += TextInput(pet_form, "species")
     
@@ -150,7 +162,7 @@ def test_me():
     
     data = {
         "name": "Juan Carlos Doe",
-        "phone": "919-555-1234",
+        "phone": "",#919-555-1234",
         "dependents": [
             { "name": "Maria", "age": "5" },
             { "name": "Ana", "age": "3" },
