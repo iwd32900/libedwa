@@ -36,7 +36,11 @@ edwa.jsonforms = {
                 msg_div.append(help_div);
             }
             if(name in data) {
-                input[0].value = edwa.jsonforms.get_value(data[name]);
+                if(input[0].type == "checkbox" || input[0].type == "radio") {
+                    input[0].checked = edwa.jsonforms.get_value(data[name]);
+                } else {
+                    input[0].value = edwa.jsonforms.get_value(data[name]);
+                }
                 var errs = edwa.jsonforms.get_errors(data[name]);
                 if(errs.length) {
                     var err_ul = $("<ul></ul>");
@@ -51,7 +55,10 @@ edwa.jsonforms = {
                 data[name] = edwa.jsonforms.get_value(data[name]) || "";
             }
             td.append(msg_div);
-            input.change(function() { data[name] = this.value; });
+            input.change(function() {
+                if(this.type == "checkbox" || this.type == "radio") data[name] = this.checked;
+                else data[name] = this.value;
+            });
             var tr = $("<tr valign='top'></tr>");
             tr.append(label_th).append(td);
             return tr;
@@ -60,6 +67,18 @@ edwa.jsonforms = {
     },
     makeTextInput: function(name, label, help_text, attrs) {
         return edwa.jsonforms.make_input(name, label, help_text, "<input type='text' name='"+name+"'"+attrs+">");
+    },
+    makePasswordInput: function(name, label, help_text, attrs) {
+        return edwa.jsonforms.make_input(name, label, help_text, "<input type='password' name='"+name+"'"+attrs+">");
+    },
+    makeHiddenInput: function(name, label, help_text, attrs) {
+        return edwa.jsonforms.make_input(name, label, help_text, "<input type='hidden' name='"+name+"'"+attrs+">");
+    },
+    makeTextarea: function(name, label, help_text, attrs) {
+        return edwa.jsonforms.make_input(name, label, help_text, "<textarea name='"+name+"'"+attrs+"></textarea>");
+    },
+    makeCheckboxInput: function(name, label, help_text, attrs) {
+        return edwa.jsonforms.make_input(name, label, help_text, "<input type='checkbox' name='"+name+"'"+attrs+">");
     },
     // Generate a list of nested forms, where one can add and remove items from the list.
     // Actually, generate a function that will do that, when called with initial data.

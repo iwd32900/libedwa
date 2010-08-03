@@ -114,8 +114,10 @@ def make_template(nform, indent=""):
             lines.append("%s%s: edwa.jsonforms.make%s(%s, %s, %s, %s)" % (
                 indent, j(child._name), child.__class__.__name__, j(child._name), j(child.label), make_template(child, indent+"    "), j(child.extras)))
         else:
+            attrs = child.attrs
+            if isinstance(child, BooleanInput): attrs['value'] = escape(child.checked_value);
             lines.append("%s%s: edwa.jsonforms.make%s(%s, %s, %s, %s)" % (
-                indent, j(child._name), child.__class__.__name__, j(child._name), j(child.label), j(child.help_text or ""), j(format_attrs(child.attrs))))
+                indent, j(child._name), child.__class__.__name__, j(child._name), j(child.label), j(child.help_text or ""), j(format_attrs(attrs))))
     return "{\n" + ",\n".join(lines) + "\n" + indent + "}";
 
 def make_html(nform, input_name="edwa-json"):
@@ -158,11 +160,13 @@ def test_me():
     form = NestedForm("x")
     form += TextInput(form, "name")
     form += TextInput(form, "phone")
+    form += CheckboxInput(form, "call_me")
     form += dep_form
     
     data = {
         "name": "Juan Carlos Doe",
         "phone": "",#919-555-1234",
+        "call_me": True,
         "dependents": [
             { "name": "Maria", "age": "5" },
             { "name": "Ana", "age": "3" },
