@@ -27,7 +27,10 @@ class NestedForm(ef.Form):
         # Make sure values are lists -- convert bare values into single-item lists.
         self.data = [dict(((k if k.startswith(self.prefix) else self.prefix+k), ef.as_vector(v)) for k, v in datum.iteritems()) for datum in data]
     def rawvalues(self):
-        return self._values_impl("rawvalues")
+        return self._values_impl("rawvalue")
+    def jsonvalues(self):
+        # Errors will only be present if values() or validate() was called.
+        return self._values_impl("rawvalue", with_errors=True)
     def values(self):
         # If we've already computed our value, just return it.
         if hasattr(self, "_value"):
@@ -38,7 +41,7 @@ class NestedForm(ef.Form):
         # Do not escape error messages here: they will be escaped before output.
         # This means they're still readable for e.g. console output.
         try:
-            self._value = self._values_impl("values")
+            self._value = self._values_impl("value")
         except Exception, ex:
             self._value = []
             self.errors.append(unicode(ex))
@@ -48,17 +51,23 @@ class NestedForm(ef.Form):
             if err: self.errors.append(unicode(err))
         if self.errors: self._value = []
         return self._value
-    def _values_impl(self, funcname):
+    def _values_impl(self, propname, with_errors=False):
         vals = []
         subforms = [child for child in self if isinstance(child, NestedForm)]
         all_data = self.data
         try:
+            def prop(child):
+                p = getattr(child, propname)
+                if with_errors and child.errors: p = {"value":p, "errors":child.errors}
+                return p
             for datum in all_data:
                 self.data = datum
-                for child in subforms: child.set_data(datum.get(child.name))
-                vals.append(getattr(super(NestedForm, self), funcname)())
+                for child in subforms: child.set_data(datum.get(child._name))
+                vals.append(dict((child._name, prop(child)) for child in self.children))
         finally:
             self.data = all_data
+        if with_errors and self.errors:
+            vals = {"value":vals, "errors":self.errors}
         return vals
     def validate(self):
         self.value
@@ -80,10 +89,10 @@ def make_template(nform, indent=""):
     for child in nform:
         if isinstance(child, NestedForm):
             lines.append("%s%s: edwa.jsonforms.make%s(%s, %s, %s, %s)" % (
-                indent, j(child.name), child.__class__.__name__, j(child.name), j(child.label), make_template(child, indent+"    "), j(child.extras)))
+                indent, j(child._name), child.__class__.__name__, j(child._name), j(child.label), make_template(child, indent+"    "), j(child.extras)))
         else:
             lines.append("%s%s: edwa.jsonforms.make%s(%s, %s, %s)" % (
-                indent, j(child.name), child.__class__.__name__, j(child.name), j(child.label), j(ef.format_attrs(child.attrs))))
+                indent, j(child._name), child.__class__.__name__, j(child._name), j(child.label), j(ef.format_attrs(child.attrs))))
     return "{\n" + ",\n".join(lines) + "\n" + indent + "}";
 
 def make_html(nform, input_name="edwa-json"):
@@ -92,7 +101,7 @@ def make_html(nform, input_name="edwa-json"):
     form_id = "%s%s_form" % (nform.id_prefix, nform.prefix)
     form_html = nform.html()
     template = make_template(nform, "    ")
-    data = json.dumps(nform.rawvalues(), indent=4)
+    data = json.dumps(nform.jsonvalues(), indent=4)
     return """<script type="text/javascript">
 jQuery(document).ready(function() {
 var template = %(template)s;
