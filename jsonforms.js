@@ -73,30 +73,12 @@ edwa.jsonforms = {
                 }
                 else if(this.type == "checkbox" || this.type == "radio") data[name] = this.checked;
                 else data[name] = this.value;
-            });
+            }).change(); // need to trigger fake change to sync single SELECTs that start with empty value
             var tr = $("<tr valign='top'></tr>");
             tr.append(label_th).append(td);
             return tr;
         }
         return handler;
-    },
-    makeTextInput: function(name, label, help_text, attrs) {
-        return edwa.jsonforms.make_input(name, label, help_text, "<input type='text' name='"+name+"'"+attrs+">");
-    },
-    makePasswordInput: function(name, label, help_text, attrs) {
-        return edwa.jsonforms.make_input(name, label, help_text, "<input type='password' name='"+name+"'"+attrs+">");
-    },
-    makeHiddenInput: function(name, label, help_text, attrs) {
-        return edwa.jsonforms.make_input(name, label, help_text, "<input type='hidden' name='"+name+"'"+attrs+">");
-    },
-    makeTextarea: function(name, label, help_text, attrs) {
-        return edwa.jsonforms.make_input(name, label, help_text, "<textarea name='"+name+"'"+attrs+"></textarea>");
-    },
-    makeCheckboxInput: function(name, label, help_text, attrs) {
-        return edwa.jsonforms.make_input(name, label, help_text, "<input type='checkbox' name='"+name+"'"+attrs+">");
-    },
-    makeSelect: function(name, label, help_text, input_str) {
-        return edwa.jsonforms.make_input(name, label, help_text, input_str);
     },
     // Generate a list of nested forms, where one can add and remove items from the list.
     // Actually, generate a function that will do that, when called with initial data.
@@ -163,7 +145,6 @@ edwa.jsonforms = {
             }
             if(extras.allow_add) {
                 td.append(add_one); // below list of forms
-                //label_td.append(add_one); // next to list label, requires change in add_one() append logic.
             }
             var row = $("<tr valign='top'></tr>").append(label_td).append(td);
             if(extras._return_td) return td;
