@@ -113,6 +113,9 @@ def make_template(nform, indent=""):
         if isinstance(child, NestedForm):
             lines.append("%s%s: edwa.jsonforms.make%s(%s, %s, %s, %s)" % (
                 indent, j(child._name), child.__class__.__name__, j(child._name), j(child.label), make_template(child, indent+"    "), j(child.extras)))
+        elif isinstance(child, Select):
+            lines.append("%s%s: edwa.jsonforms.make%s(%s, %s, %s, %s)" % (
+                indent, j(child._name), child.__class__.__name__, j(child._name), j(child.label), j(child.help_text or ""), j(child.html())))
         else:
             attrs = child.attrs
             if isinstance(child, BooleanInput): attrs['value'] = escape(child.checked_value);
@@ -150,7 +153,7 @@ def path_to_jsonforms_js():
 def test_me():
     pet_form = NestedForm("pets", required=False)
     pet_form += TextInput(pet_form, "name")
-    pet_form += TextInput(pet_form, "species")
+    pet_form += Select(pet_form, "species", choices=("perro", "gato", "pez", ("hamster", raw("h&aacute;mster"))))#, multiple=True)
     
     dep_form = NestedForm("dependents")
     dep_form += TextInput(dep_form, "name")
@@ -171,7 +174,7 @@ def test_me():
             { "name": "Maria", "age": "5" },
             { "name": "Ana", "age": "3" },
             { "name": "Juanita", "age": "1" },
-            { "pets": [{}] } # an empty slot at the end of the list, with an empty slot for pets!
+            { "pets": [{"species": "pez"}] } # an empty slot at the end of the list, with an empty slot for pets!
         ]
     }
     form.set_data(data)
