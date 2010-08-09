@@ -23,8 +23,8 @@ class NestedForm(Form):
         super(NestedForm, self).__init__(**kwargs)
     def set_data(self, data=[], files=None):
         if files: raise ValueError("File uploads not supported!")
-        data = data or [] # in case None is passed
-        if isinstance(data, basestring): data = json.loads(data)
+        if data is None: data = []
+        elif isinstance(data, basestring): data = json.loads(data)
         elif is_scalar(data): data = as_vector(data)
         # Make sure keys are prefixed with the form-wide prefix.
         # Make sure values are lists -- convert bare values into single-item lists.
@@ -131,7 +131,7 @@ var template = %(template)s;
 
 var data = %(data)s;
 
-jQuery("#%(form_id)s").prepend(edwa.jsonforms.make_jsonform(data[0], template)).submit(function() {
+jQuery("#%(form_id)s").prepend(edwa.jsonforms.make_jsonform(data, template)).submit(function() {
     // JSON.stringify() can be obtained from the "json2" library if the browser does not provide it.
     jQuery("input[name=%(input_name)s]", this)[0].value = JSON.stringify(data);
 });

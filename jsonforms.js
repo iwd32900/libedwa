@@ -75,7 +75,9 @@ edwa.jsonforms = {
                 else data[name] = this.value;
             }).change(); // need to trigger fake change to sync single SELECTs that start with empty value
             var tr = $("<tr valign='top'></tr>");
-            tr.append(label_th).append(td);
+            if(input[0].type != "hidden") tr.append(label_th);
+            else tr.append("<th align='right'><div class='"+edwa.css_prefix+"label'></th>");
+            tr.append(td);
             return tr;
         }
         return handler;
@@ -98,10 +100,12 @@ edwa.jsonforms = {
             var data_list = edwa.jsonforms.get_value(all_data[name]) || [];
             all_data[name] = data_list;
             var td = $("<td></td>")
+            var input_div = $("<div class='"+edwa.css_prefix+"input'></div>");
+            td.append(input_div);
             // Make a <TABLE> containing one complete set of form fields,
             // along with a link to remove that set of fields.
             function make_table(data, allow_remove) {
-                var table = $("<table border='0' cellspacing='0' cellpadding='0'></table>");
+                var table = $("<table border='0' cellspacing='0' cellpadding='0' class='"+edwa.css_prefix+"nform'></table>");
                 var nrows = 0;
                 for(var fieldname in template) {
                     var row = template[fieldname](data);
@@ -125,7 +129,7 @@ edwa.jsonforms = {
             for(ii in data_list) {
                 var data = data_list[ii];
                 // Fields created from initialization data may or may not be removable.
-                td.append(make_table(data, extras.allow_remove));
+                input_div.append(make_table(data, extras.allow_remove));
             }
             // Create a link that will add a (blank) item to the list.
             var add_one = $("<a href=''>"+extras.add_icon+"</a>").click(function() {
@@ -135,17 +139,21 @@ edwa.jsonforms = {
                 $(this).before(make_table(data, true));
                 return false;
             });
-            var label_td = $("<th align='right'> "+label+" </th>");
+            if(extras.allow_add) {
+                input_div.append(add_one); // below list of forms
+            }
             if(errs.length) {
                 var err_ul = $("<ul></ul>");
                 for(var ii in errs) {
                     err_ul.append($("<li>"+errs[ii]+"</li>"));
                 }
-                td.append(err_ul);
+                var err_div = $("<div class='"+edwa.css_prefix+"error'></div>");
+                err_div.append(err_ul);
+                var msg_div = $("<div class='"+edwa.css_prefix+"msgs'></div>");
+                msg_div.append(err_div);
+                td.append(msg_div);
             }
-            if(extras.allow_add) {
-                td.append(add_one); // below list of forms
-            }
+            var label_td = $("<th align='right'><div class='"+edwa.css_prefix+"label'> "+label+" </th>");
             var row = $("<tr valign='top'></tr>").append(label_td).append(td);
             if(extras._return_td) return td;
             else return row;
@@ -160,8 +168,10 @@ edwa.jsonforms = {
             allow_remove: false,
             _return_td: true,
         });
-        var td = edwa.jsonforms.makeNestedForm("x", "x", template, extras)({x:[data]});
-        return td.children(); // all DOM elements in the second top-level TD
+        var data = edwa.jsonforms.get_value(data);
+        if(data.length == 0) data.push( {} );
+        var td = edwa.jsonforms.makeNestedForm("x", "x", template, extras)({x:data});
+        return td.children().first().children(); // all DOM elements in the DIV in the second top-level TD
     },
 };
 })(jQuery);
