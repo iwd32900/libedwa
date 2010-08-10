@@ -14,7 +14,6 @@ class NestedForm(Form):
     def __init__(self, name, **kwargs):
         self.name = self._name = name
         self.label = kwargs.pop("label", name.replace("_", " ").capitalize())
-        self.extras = kwargs.pop("extras", {})
         self.errors = None
         self.require = kwargs.pop("require", [])
         self._valid = False
@@ -105,25 +104,25 @@ class NestedForm(Form):
     def value(self):
         return self.values()
 
-def make_template(nform, indent=""):
+def make_template(nform, extras, indent=""):
     """Returns as JavaScript object as a string, starting with "{" and ending with "}"."""
     lines = []
     j = json.dumps
     for child in nform:
         if isinstance(child, NestedForm):
             lines.append("%s%s: edwa.jsonforms.make%s(%s, %s, %s, %s)" % (
-                indent, j(child._name), child.__class__.__name__, j(child._name), j(child.label), make_template(child, indent+"    "), j(child.extras)))
+                indent, j(child._name), child.__class__.__name__, j(child._name), j(child.label), make_template(child, extras, indent+"    "), j(extras)))
         else:
             lines.append("%s%s: edwa.jsonforms.make_input(%s, %s, %s, %s)" % (
                 indent, j(child._name), j(child._name), j(child.label), j(child.help_text or ""), j(child.html())))
     return "{\n" + ",\n".join(lines) + "\n" + indent + "}";
 
-def make_html(nform, input_name="edwa-json"):
+def make_html(nform, extras={}, input_name="edwa-json"):
     """Makes a SCRIPT tag and the start of the FORM, still needs a submit button and a closing tag.
     JQuery and jsonforms.js should have already been included in the HEAD."""
     form_id = "%s%s_form" % (nform.id_prefix, nform.prefix)
     form_html = nform.html()
-    template = make_template(nform, "    ")
+    template = make_template(nform, extras, "    ")
     data = json.dumps(nform.jsonvalues(), indent=4)
     return """<script type="text/javascript">
 jQuery(document).ready(function() {

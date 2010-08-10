@@ -112,7 +112,7 @@ edwa.jsonforms = {
                     table.append(row);
                     nrows += 1;
                 }
-                var remove_this = $("<a href=''>"+extras.remove_icon+"</a>").click(function() {
+                var remove_this = $("<a href='' class='"+edwa.css_prefix+"rm1'>"+extras.remove_icon+"</a>").click(function() {
                     var ii = $.inArray(data, data_list); // == indexOf
                     if(ii < 0 && console) console.log("Whoa -- can't find form item to remove it!");
                     data_list.splice(ii, 1);
@@ -132,7 +132,7 @@ edwa.jsonforms = {
                 input_div.append(make_table(data, extras.allow_remove));
             }
             // Create a link that will add a (blank) item to the list.
-            var add_one = $("<a href=''>"+extras.add_icon+"</a>").click(function() {
+            var add_one = $("<a href='' class='"+edwa.css_prefix+"add1'>"+extras.add_icon+"</a>").click(function() {
                 var data = {};
                 data_list.push(data);
                 // Newly created entries are always removable before form is submitted.
