@@ -416,14 +416,14 @@ def as_date_or_time(x):
         except ValueError: pass
     raise ValueError("Cannot interpret '%s' as a date/time" % x)
 
-def DateTime(formats=DATE_TIME_FMTS):
+def DateTime(formats=DATE_TIME_FMTS, err_fmt="Cannot interpret '%s' as a date + time"):
     formats = as_vector(formats)
     def maketype(text):
         import datetime as dt
         for format in formats:
             try: return dt.datetime.strptime(text, format)
             except ValueError: pass
-        raise ValueError("Cannot interpret '%s' as a date/time" % text)
+        raise ValueError(err_fmt % text)
     def untype(obj): # so that datatime objs can be provided to initial=...
         try: return obj.strftime(formats[0])
         except: return obj
@@ -431,14 +431,14 @@ def DateTime(formats=DATE_TIME_FMTS):
     return maketype
 
 def Date(formats=DATE_FMTS):
-    f = DateTime(formats)
+    f = DateTime(formats, err_fmt="Cannot interpret '%s' as a date")
     def maketype(text):
         return f(text).date()
     maketype.untype = f.untype
     return maketype
 
 def Time(formats=TIME_FMTS):
-    f = DateTime(formats)
+    f = DateTime(formats, err_fmt="Cannot interpret '%s' as a time of day")
     def maketype(text):
         return f(text).time()
     maketype.untype = f.untype
