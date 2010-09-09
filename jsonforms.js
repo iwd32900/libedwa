@@ -122,6 +122,18 @@ edwa.jsonforms = {
                 if(allow_remove) {
                     $("tr", table).first().prepend($("<td rowspan='"+nrows+"'></td>").append(remove_this));
                 }
+                // For any SELECTs that are marked with CSS class "edwa-new-and-used",
+                // hide the other fields in that subform UNLESS the value is 0.
+                // This facilitates either choosing between existing objects
+                // or creating a new object. (Editing an existing object is not supported.)
+                $("."+edwa.css_prefix+"new-and-used", table).bind("change", function() {
+                    if(this.value == 0) {
+                        $("tr", $(this).closest("table")).show();
+                    } else {
+                        var my_tr = $(this).closest("tr");
+                        $("tr", $(this).closest("table")).not(my_tr).hide();
+                    }
+                }).change(); // initial sync
                 return table;
             }
             // For each item in the list of initial values, construct a <TABLE>
