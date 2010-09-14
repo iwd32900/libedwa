@@ -145,6 +145,9 @@ class Input(object):
         require     a list of validation functions, which take one argument (the value)
                     and return either an error message (as a string) or None if the value is OK.
                     Most validators should allow None as a valid value.
+                    NEW: validator functions should also accept **kwargs, which *may* include:
+                        peers   a dictionary {name:Input} of other Inputs in the parent form.
+                                Usually built from self.form.children (though not for NestedForms).
         required    if True (the default), prepends not_empty to the list of requirements for validation.
         initial     a fallback initial value if no data is provided to the Form
                     If *any* data is provided to the form, the initial value is ignored,
@@ -192,8 +195,10 @@ class Input(object):
                 # validators like not_empty will produce a confusing value in response to this None.
                 return self._value
         # If coerced successfully, apply the 'require' criteria (if any).
+        peers = dict((inp._name, inp) for inp in getattr(self, "peers", self.form.children))
         for requirement in self.require:
-            err = requirement(self._value)
+            try: err = requirement(self._value, peers=peers)
+            except TypeError: err = requirement(self._value) # old-style validator doesn't take **kwargs
             if err: self.errors.append(unicode(err))
         if self.errors: self._value = None
         return self._value
@@ -448,7 +453,7 @@ def Time(formats=TIME_FMTS):
 
 ### Validation functions to use with require=[...] ###
 
-def not_empty(val):
+def not_empty(val, **kwargs):
     """A mandatory, non-empty form field."""
     # This is surprisingly hard to get right.
     # Zero is a legit value but "not 0" is true.
@@ -466,7 +471,7 @@ def regex(r, error_msg=None):
     if isinstance(r, basestring):
         import re
         r = re.compile(r)
-    def validate(val):
+    def validate(val, **kwargs):
         if not val: return # allow field to be empty, including the empty string
         if not r.search(val):
             if error_msg: return error_msg
@@ -494,28 +499,28 @@ web_url = regex( # also blatantly stolen from Django
 
 def maximum(m):
     """Maximum numeric value, inclusive."""
-    def validate(val):
+    def validate(val, **kwargs):
         if val is None: return # allow field to be empty
         if val > m: return "Please enter a value of at most %s" % m
     return validate
 
 def minimum(m):
     """Minimum numeric value, inclusive."""
-    def validate(val):
+    def validate(val, **kwargs):
         if val is None: return # allow field to be empty
         if val < m: return "Please enter a value of at least %s" % m
     return validate
 
 def maxlen(m):
     """Maximum string length, inclusive."""
-    def validate(val):
+    def validate(val, **kwargs):
         if val is None: return # allow field to be empty
         if len(val) > m: return "Please limit to %s characters" % m
     return validate
 
 def minlen(m):
     """Minimum string length, inclusive.  Empty string *is* permitted, unless paired with not_empty."""
-    def validate(val):
+    def validate(val, **kwargs):
         if not val: return # allow field to be empty, including the empty string
         if len(val) < m: return "Please enter at least %s characters" % m
     return validate
@@ -523,7 +528,7 @@ def minlen(m):
 def not_before(x):
     """Set limits on date and/or time. See as_date_or_time() for possible values of x."""
     dt = as_date_or_time(x)
-    def validate(val):
+    def validate(val, **kwargs):
         if val is None: return # allow field to be empty
         if val < dt: return "Please enter a date/time of %s or later" % x
     return validate
@@ -531,23 +536,24 @@ def not_before(x):
 def not_after(x):
     """Set limits on date and/or time. See as_date_or_time() for possible values of x."""
     dt = as_date_or_time(x)
-    def validate(val):
+    def validate(val, **kwargs):
         if val is None: return # allow field to be empty
         if val > dt: return "Please enter a date/time of %s or earlier" % x
     return validate
 
 def each(requirement):
     """Wrapper to turn validators that expect scalars into validators that expect lists."""
-    def validate(values):
+    def validate(values, **kwargs):
         for value in values:
-            err = requirement(value)
+            try: err = requirement(value, **kwargs)
+            except TypeError: err = requirement(self._value) # old-style validator doesn't take **kwargs
             if err: return err
     return validate
 
 def in_choices(choices):
     """Validates that all values for the VectorInput are allowable choices."""
     allowed = set(c.value for c in choices)
-    def validate(values):
+    def validate(values, **kwargs):
         ok = False
         # values is probably a list of values
         if is_scalar(values): ok = values in allowed

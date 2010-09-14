@@ -51,7 +51,8 @@ class NestedForm(Form):
             self.errors.append(unicode(ex))
         # If coerced successfully, apply the 'require' criteria (if any).
         for requirement in self.require:
-            err = requirement(self._value)
+            try: err = requirement(self._value) # add kwargs here as needed!
+            except TypeError: err = requirement(self._value) # old-style validator doesn't take **kwargs
             if err: self.errors.append(unicode(err))
         if self.errors:
             self._value = []
@@ -65,6 +66,8 @@ class NestedForm(Form):
                 for kid in new_kids:
                     # Otherwise, kid.form points to a new, copied form object:
                     if hasattr(kid, "form"): kid.form = self
+                    # This is used by the validation machinery for inter-Input dependencies:
+                    kid.peers = new_kids # since kid.form.children refers to the unused, prototypical NestedForm.children
                     # This is the proper time to set data, so it isn't re-set unnecessarily.
                     if isinstance(kid, NestedForm): kid.set_data(datum.get(kid._name))
                 self.kids.append(new_kids)
