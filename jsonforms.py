@@ -4,6 +4,7 @@ Uses JavaScript and JQuery (1.4+) to return results in JSON format.
 """
 import uuid
 from copy import deepcopy
+from copy import copy as shallow_copy
 try: import json
 except ImportError: import simplejson as json
 
@@ -67,7 +68,8 @@ class NestedForm(Form):
             # Make a deep copy of self.children for each set of data we have:
             self.kids = []
             for datum in self.data:
-                new_kids = deepcopy(self.children)
+                #new_kids = deepcopy(self.children)
+                new_kids = [shallow_copy(child) for child in self.children]
                 for kid in new_kids:
                     # Otherwise, kid.form points to a new, copied form object:
                     if hasattr(kid, "form"): kid.form = self
