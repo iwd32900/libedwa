@@ -60,6 +60,11 @@ class NestedForm(Form):
         return self._value
     def _values_impl(self, mode):
         if self.kids is None:
+            # Break references between children and self to reduce scope of deep copying:
+            old_forms = [(child, getattr(child, "form", None)) for child in self.children]
+            for child in self.children:
+                if hasattr(child, "form"): child.form = None
+            # Make a deep copy of self.children for each set of data we have:
             self.kids = []
             for datum in self.data:
                 new_kids = deepcopy(self.children)
@@ -71,6 +76,9 @@ class NestedForm(Form):
                     # This is the proper time to set data, so it isn't re-set unnecessarily.
                     if isinstance(kid, NestedForm): kid.set_data(datum.get(kid._name))
                 self.kids.append(new_kids)
+            # Restore links between (prototypical) children and self:
+            for child, old_form in old_forms:
+                if hasattr(child, "form"): child.form = old_form
         vals = []
         all_data = self.data
         try:
