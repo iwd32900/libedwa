@@ -73,9 +73,11 @@ class Form(object):
                 Calling this function replaces any values passed previously or in the constructor,
                 and overrides any values passed to individual inputs as initial=...
                 In Django, try dict(request.POST.lists()).
+                In Bottle, try request.forms.dict.
         files   A dictionary mapping HTML names (as strings) to file-like objects.
                 These will be wrapped in lists (like data) for consistency sake.
                 In Django, try request.FILES.
+                In Bottle, try request.files.dict.
         """
         data = data or {} # in case None is passed
         if files:
