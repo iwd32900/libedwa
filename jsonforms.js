@@ -91,7 +91,7 @@ edwa.jsonforms = {
             allow_remove: true,
             add_icon: "(+)",
             remove_icon: "(-)",
-            _return_td: false,
+            _return_td: false
         }, extras);
         function handler(all_data) {
             if(!(name in all_data)) all_data[name] = [];
@@ -178,12 +178,12 @@ edwa.jsonforms = {
         var extras = $.extend(extras, {
             allow_add: false,
             allow_remove: false,
-            _return_td: true,
+            _return_td: true
         });
         var data = edwa.jsonforms.get_value(data);
         if(data.length == 0) data.push( {} );
         var td = edwa.jsonforms.makeNestedForm("x", "x", template, extras)({x:data});
         return td.children().first().children(); // all DOM elements in the DIV in the second top-level TD
-    },
+    }
 };
 })(jQuery);
