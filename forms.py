@@ -251,7 +251,19 @@ class HiddenInput(ScalarInput):
 class FileInput(ScalarInput):
     """Provides either a file(-like) object, or None."""
     def __init__(self, form, name, **kwargs):
-        kwargs["type"] = lambda x: x or None
+        def file_type(x):
+            # cgi.FieldStorage objects are provided by Bottle.
+            # They're irritating to work with, and for some reason evaluate to False (!)
+            import cgi
+            if isinstance(x, cgi.FieldStorage):
+                if x.file: return x.file
+                else:
+                    import cStringIO as StringIO
+                    return StringIO.StringIO(x.value)
+            # Django kindly provides file-like objects to start with, which evaluate as True.
+            elif x: return x
+            else: return None
+        kwargs["type"] = file_type
         super(FileInput, self).__init__(form, name, **kwargs)
     def html(self):
         return u"<input type='file' id='%s' name='%s'%s />" % (self.id, self.name, format_attrs(self.attrs))
