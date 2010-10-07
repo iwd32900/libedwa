@@ -200,7 +200,8 @@ class EDWA(object):
         if self._use_GET and len(action_id)+len(self._curr_page_encoded) <= self._max_url_length:
             return 'libedwa:%s' % action_id # will be expanded to a full URL by JavaScript
         else:
-            return 'javascript:libedwa_post_href("%s");' % action_id # will trigger a POST of a hidden form via JavaScript
+            # quotes need to be escaped; this works for href="..." and href='...'
+            return 'javascript:libedwa_post_href(\"%s\");' % action_id # will trigger a POST of a hidden form via JavaScript
     # Shortcuts for form(make_XXX()):
     def form_noop(self): return self.form(self.make_noop())
     def form_goto(self, *args, **kwargs): return self.form(self.make_goto(*args, **kwargs))
