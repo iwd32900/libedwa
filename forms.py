@@ -563,8 +563,12 @@ def each(requirement):
     return validate
 
 def in_choices(choices):
-    """Validates that all values for the VectorInput are allowable choices."""
-    allowed = set(c.value for c in choices)
+    """
+    Validates that the value of a ScalarInput is a valid choice,
+    or that all values for the VectorInput are allowable choices.
+    "choices" can be either plain values or a list of Choice objects.
+    """
+    allowed = set((c.value if isinstance(c, Choice) else c) for c in choices)
     def validate(values, **kwargs):
         ok = False
         # values is probably a list of values
