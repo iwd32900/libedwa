@@ -22,6 +22,11 @@ class NestedForm(Form):
         if kwargs.pop("required", True): self.require = [not_empty] + self.require
         super(NestedForm, self).__init__(**kwargs)
     def set_data(self, data=[], files=None):
+        """
+        This can only be called on the top-level nested form.
+        Trying to use it directly on nested (child) forms will have no effect,
+        because of the way data is propagated to child forms.
+        """
         if files: raise ValueError("File uploads not supported!")
         if data is None: data = []
         elif isinstance(data, basestring): data = json.loads(data)
