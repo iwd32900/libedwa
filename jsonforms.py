@@ -23,6 +23,16 @@ class NestedForm(Form):
         super(NestedForm, self).__init__(**kwargs)
     def set_data(self, data=[], files=None):
         """
+        data    A dictionary mapping HTML names (as strings) to lists of values,
+                or a list of such dictionaries, or such a list as a JSON string.
+                Bare, non-list values will automatically be wrapped in lists.
+                This can either be initial values, or the result of form submission.
+                Calling this function replaces any values passed previously or in the constructor,
+                and overrides any values passed to individual inputs as initial=...
+                In Django, try request.POST['edwa-json']
+                In Bottle, try request.forms['edwa-json']
+        files   For compatibility with libedwa.Form only.  Do not use.
+        
         This can only be called on the top-level nested form.
         Trying to use it directly on nested (child) forms will have no effect,
         because of the way data is propagated to child forms.
