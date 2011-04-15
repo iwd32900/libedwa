@@ -159,6 +159,9 @@ var template = %(template)s;
 var data = %(data)s;
 
 jQuery("#%(form_id)s").prepend(edwa.jsonforms.make_jsonform(data, template)).submit(function() {
+    // Programatic changes (this.value = ...) to input elements do not generate change events.
+    // Thus, for safety, we trigger one manually before submit.  :input matches textareas, selects, checkboxes, etc.
+    jQuery(":input").change();
     // JSON.stringify() can be obtained from the "json2" library if the browser does not provide it.
     jQuery("input[name=%(input_name)s]", this)[0].value = JSON.stringify(data);
 });
