@@ -28,16 +28,20 @@ sa.Table('libedwa_action', meta,
 class DatabaseEDWA(EDWA):
     def __init__(self, db_url_or_engine, user_uuid, *args, **kwargs):
         """
-        "db_url" - a database connection URL in SQLAlchemy format, or the actual Engine object.
-        "user_uuid" - up to 32 characters identifying the user / session.  Generate with "uuid.uuid4().hex".  Can be None.
+        `db_url` - a database connection URL in SQLAlchemy format, or the actual Engine object, or a Connection object.
+            At least with the on-disk SQLite backend, a URL or Engine is very inefficient, because each new page/action
+            is committed separately.  It's *much* faster (~40x) to do everything within one transaction in one Connection.
+        `user_uuid` - up to 32 characters identifying the user / session.  Generate with "uuid.uuid4().hex".  Can be None.
         """
         super(DatabaseEDWA, self).__init__("THIS WILL NEVER BE USED", *args, **kwargs)
         del self._secret_key # just to make sure the dummy value is never used
         if user_uuid: assert len(user_uuid) <= 32
         self._user_uuid = user_uuid
-        if isinstance(db_url_or_engine, sa.engine.Engine): self.engine = db_url_or_engine
+        if hasattr(db_url_or_engine, 'execute'): self.engine = db_url_or_engine
         else: self.engine = sa.create_engine(db_url_or_engine)#, echo_pool=True)
         meta.create_all(bind=self.engine)
+    def _typecheck_str(self, s):
+        return s # don't need bytes here, Unicode is fine
     def _encode_page(self):
         assert self._curr_page is not None
         pageT = meta.tables['libedwa_page']
