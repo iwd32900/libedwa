@@ -94,6 +94,10 @@ class EDWA(object):
         """Just like context, but not preserved across requests.
         A convenience for passing transient data between the action and the view."""
         return self._curr_page.tmp
+    def _typecheck_str(self, s):
+        """This class deals only with ASCII / byte strings, while others prefer Unicode."""
+        if not isinstance(s, bytes): return s.encode()
+        else: return s
     def _set_page(self, page):
         """Set the current page to some newly-created Page object."""
         assert self._mode is not EDWA.MODE_RENDER, "Can't change location during rendering!  Did you mean to call make_*()?"
@@ -132,8 +136,8 @@ class EDWA(object):
         if render: return self.render_page(request)
     def run(self, request, action_id, page_id, render=True):
         """Run the provided action and display the resulting view."""
-        if not isinstance(action_id, bytes): action_id = action_id.encode()
-        if not isinstance(  page_id, bytes):   page_id =   page_id.encode()
+        action_id = self._typecheck_str(action_id)
+        page_id   = self._typecheck_str(page_id)
         # Data is saved in two pieces, "base64(hmac).base64(action)" and "base64(page)"
         # However, hmac is computed on "base64(action).base64(page)"
         # Typically, many different actions (small) share the same page data (large).
