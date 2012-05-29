@@ -3,7 +3,8 @@ A library for Event-Driven Web Applications (EDWA).
 Please see the README file for explanation!
 """
 import base64, hashlib, hmac, sys
-import cPickle as pickle
+try: import cPickle as pickle
+except ImportError: import pickle
 
 # Zlib compressing appears to be a very small net win in size for simple pages.
 # For contexts with lots of English text, though, it may help more?
@@ -12,12 +13,15 @@ from zlib import compress, decompress
 #from bz2 import compress, decompress
 #compress = decompress = lambda x, lvl=0: x
 
+SEP = b'.' # works as early as 2.6
+
 __all__ = ['EDWA', 'TamperingError']
 
 def _dump_func(f):
     """Given a module-level or instance function, convert to a picklable form."""
     if f is None: return None
-    if hasattr(f, "im_class"): return ".".join((f.__module__, f.im_class.__name__, f.__name__))
+    if hasattr(f, "im_class"): return ".".join((f.__module__, f.im_class.__name__, f.__name__)) # works in 2.x but not 3.x
+    elif hasattr(f, "__self__"): return ".".join((f.__module__, f.__self__.__class__.__name__, f.__name__)) # works in 3.x and 2.7, but not earlier
     else: return ".".join((f.__module__, f.__name__))
 
 def _load_func(x):
@@ -27,7 +31,7 @@ def _load_func(x):
     # Try first 1, 2, ... names as the module name.
     # (Is it possible to import "foo.bar" without also importing "foo"?)
     module = None
-    for ii in xrange(len(names)):
+    for ii in range(len(names)):
         module = sys.modules.get(".".join(names[:ii+1]))
         if module is not None: break
     else: assert False, "Could not find module for '%s'" % x
@@ -73,6 +77,7 @@ class EDWA(object):
     def __init__(self, secret_key, use_GET=False):
         assert secret_key, "Must provide a non-empty secret key!"
         # Configuration
+        if not isinstance(secret_key, bytes): secret_key = secret_key.encode() # Unicode -> bytes
         self._secret_key = secret_key # protects actions stored in URLs
         self._use_GET = use_GET # use GET (data in URLs) or POST (no data in URLs)?
         self._max_url_length = 1900 # Internet Explorer is limited to URLs of 2048 characters TOTAL.
@@ -108,16 +113,16 @@ class EDWA(object):
         assert self._mode is not EDWA.MODE_ACTION, "Can't create new actions during an action, because page state is not finalized."
         assert self._curr_page_encoded is not None, "Page state must be serialized before creating an action!"
         data = base64.urlsafe_b64encode(compress(action.encode(), 1))
-        auth = hmac.new(self._secret_key, "%s.%s" % (data, self._curr_page_encoded), hashlib.sha1).digest()
-        return "%s.%s" % (base64.urlsafe_b64encode(auth), data)
+        auth = hmac.new(self._secret_key, data + SEP + self._curr_page_encoded, hashlib.sha1).digest()
+        return base64.urlsafe_b64encode(auth) + SEP + data
     def _decode_action(self, action_id):
         """Convert the output of _encode_action() back into a real Action object.
         If the action_id is invalid, raises a TamperingError.
         """
         assert self._curr_page_encoded is not None, "Page state must be known when decoding an action!"
-        if "." not in action_id: raise TamperingError("Malformed action_id %s" % action_id)
-        auth, data = action_id.split(".", 1)
-        if base64.urlsafe_b64decode(auth) != hmac.new(self._secret_key, "%s.%s" % (data, self._curr_page_encoded), hashlib.sha1).digest():
+        if SEP not in action_id: raise TamperingError("Malformed action_id %s" % action_id)
+        auth, data = action_id.split(SEP, 1)
+        if base64.urlsafe_b64decode(auth) != hmac.new(self._secret_key, data + SEP + self._curr_page_encoded, hashlib.sha1).digest():
             raise TamperingError("Signature does not match for %s" % action_id)
         action = Action.decode(decompress(base64.urlsafe_b64decode(data)))
         return action
@@ -127,7 +132,8 @@ class EDWA(object):
         if render: return self.render_page(request)
     def run(self, request, action_id, page_id, render=True):
         """Run the provided action and display the resulting view."""
-        action_id, page_id = str(action_id), str(page_id)
+        if not isinstance(action_id, bytes): action_id = action_id.encode()
+        if not isinstance(  page_id, bytes):   page_id =   page_id.encode()
         # Data is saved in two pieces, "base64(hmac).base64(action)" and "base64(page)"
         # However, hmac is computed on "base64(action).base64(page)"
         # Typically, many different actions (small) share the same page data (large).
