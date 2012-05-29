@@ -1,13 +1,51 @@
 from libedwa import *
 
+def profile(filename):
+    """
+    Transparently add profiling to a particular function call.
+
+    @profile("profile_output.prof")
+    def my_function(arg1, arg2):
+        pass
+
+    Then from ipython:
+        import pstats
+        p = pstats.Stats("profile_output.prof")
+        p.sort_stats("cumu").print_stats(50)
+        p.sort_stats("time").print_stats(50)
+    """
+    import functools
+    try: import cProfile as profile
+    except ImportError: import profile
+    def curried_decorator(f):
+        def decorated_f(*args, **kwargs):
+            g = f # so that it becomes locally visible
+            l = locals() # to capture the return value
+            profile.runctx("retval = g(*args, **kwargs)", globals(), l, filename)
+            return l['retval']
+        functools.update_wrapper(decorated_f, f)
+        return decorated_f
+    return curried_decorator
+
 class ExerciseApi(object):
     """Simple demonstration of the API, without real HTTP requests."""
     def run3(self):
-        self.run(DatabaseEDWA, "sqlite:////home/ian.davis/tmp-edwa.db", None)
+        import sqlalchemy as sa
+        db = sa.create_engine("sqlite:///tmp-edwa.db")
+        #db = sa.create_engine("sqlite:///:memory:")
+        #self.run(DatabaseEDWA, db, None)
+        conn = db.connect()
+        trans = conn.begin()
+        try:
+            self.run(DatabaseEDWA, conn, None)
+        finally:
+            trans.commit()
+            conn.close()
     def run2(self):
         self.run(KeyczarEDWA, "/home/ian.davis/tmp-pycrypto/crypt_keys")
     def run1(self):
         self.run(EDWA, 'my-secret-key')
+    @profile("edwa.prof")
     def run(self, EdwaClass, *args):
         def show(action_id):
             print("    Action ID length:", len(action_id))
