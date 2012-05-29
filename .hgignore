@@ -1,0 +1,3 @@
+syntax: glob
+django_demo/demo.db
+*.pyc
