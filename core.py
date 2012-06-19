@@ -146,7 +146,10 @@ class EDWA(object):
         self._decode_page() # if no exception, now safe to decode page data
         try:
             self._mode = EDWA.MODE_ACTION
-            action(request, self)
+            action_result = action(request, self)
+            # This allows actions to e.g. return a generated file,
+            # without having to create a whole new page just for that purpose.
+            if action_result is not None: return action_result
         finally: self._mode = None
         if render: return self.render_page(request)
     def render_page(self, request):
