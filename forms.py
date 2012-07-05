@@ -64,6 +64,7 @@ class Form(object):
         self.id_prefix = id_prefix
         self.attrs = kwargs
         self.children = []
+        self.by_name = {} # for random access to `children`
         self.set_data(data=data, files=files)
     def set_data(self, data={}, files={}):
         """
@@ -89,11 +90,15 @@ class Form(object):
     def add(self, child):
         """Add a new input component to this form."""
         self.children.append(child)
+        self.by_name[child.name] = child
         return self # needed to support "+=" syntax
     __iadd__ = add # so you can use "form += input_element"
     def __iter__(self):
         """Iterate over the components in this form."""
         return iter(self.children)
+    def __getitem__(self, k):
+        """Return child components by name."""
+        return self.by_name[k]
     def html(self):
         """Generate the opening FORM tag (only)."""
         attrs = dict(self.attrs)
@@ -163,7 +168,8 @@ class Input(object):
         self.help_text = kwargs.pop("help_text", None)
         self.type = kwargs.pop("type", unicode)
         self.require = kwargs.pop("require", [])
-        if kwargs.pop("required", True): self.require = [not_empty] + self.require
+        self.required = kwargs.pop("required", True)
+        if self.required: self.require = [not_empty] + self.require
         if "initial" in kwargs: self._initial = kwargs.pop("initial")
         self.attrs = kwargs
         self.errors = None # list of error messages, if any, not yet escaped for HTML special chars
@@ -575,6 +581,14 @@ def in_choices(choices):
         if is_scalar(values): ok = values in allowed
         else: ok = all(v in allowed for v in values)
         if not ok: return "Please select one of the permitted choices"
+    return validate
+
+def matches_peer(peername):
+    '''Requires that two fields have identical values, e.g. for re-entering an email address.'''
+    def validate(val, peers, **kwargs):
+        peer = peers[peername]
+        if val is None: return # allow field to be empty
+        if val != peer.value: return "Does not match %s" % peer.label
     return validate
 
 ### Display helpers for quickly generating HTML ###
