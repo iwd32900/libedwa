@@ -11,19 +11,21 @@ __all__ = ['DatabaseEDWA']
 
 meta = sa.MetaData()
 sa.Table('libedwa_page', meta,
-         sa.Column('id', sa.Integer, primary_key=True),
-         sa.Column('created', sa.DateTime, index=True, nullable=False, default=datetime.datetime.now),
-         sa.Column('user_uuid', sa.String(32), nullable=True),
-         sa.Column('page_uuid', sa.String(32), nullable=False),
-         sa.Column('data', sa.Binary),
-         )
+    sa.Column('id', sa.Integer, primary_key=True),
+    sa.Column('created_utc', sa.DateTime, index=True, nullable=False, default=datetime.datetime.utcnow),
+    sa.Column('user_uuid', sa.String(32), nullable=True),
+    sa.Column('page_uuid', sa.String(32), nullable=False),
+    sa.Column('data', sa.Binary),
+    mysql_engine='InnoDB'
+    )
 sa.Index('libedwa_user_page_idx', meta.tables['libedwa_page'].c.user_uuid, meta.tables['libedwa_page'].c.page_uuid, unique=True)
 sa.Table('libedwa_action', meta,
-         sa.Column('page_id', sa.Integer, sa.ForeignKey('libedwa_page.id'), nullable=False),
-         sa.Column('action_uuid', sa.String(32), nullable=False),
-         sa.Column('data', sa.Binary),
-         sa.PrimaryKeyConstraint('page_id', 'action_uuid')
-         )
+    sa.Column('page_id', sa.Integer, sa.ForeignKey('libedwa_page.id', ondelete='CASCADE'), nullable=False),
+    sa.Column('action_uuid', sa.String(32), nullable=False),
+    sa.Column('data', sa.Binary),
+    sa.PrimaryKeyConstraint('page_id', 'action_uuid'),
+    mysql_engine='InnoDB'
+    )
 
 class DatabaseEDWA(EDWA):
     def __init__(self, db_url_or_engine, user_uuid, *args, **kwargs):
