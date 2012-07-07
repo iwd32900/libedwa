@@ -248,7 +248,10 @@ class Textarea(ScalarInput):
 
 class PasswordInput(ScalarInput):
     def html(self):
-        return u"<input type='password' id='%s' name='%s' value='%s'%s />" % (self.id, self.name, escape(self.rawvalue), format_attrs(self.attrs))
+        #return u"<input type='password' id='%s' name='%s' value='%s'%s />" % (self.id, self.name, escape(self.rawvalue), format_attrs(self.attrs))
+        # A password field should never be pre-filled server side.  Among other things, it ends up in the browser cache.
+        # If there's an error in form validation, you have to retype the password -- sorry.
+        return u"<input type='password' id='%s' name='%s'%s />" % (self.id, self.name, format_attrs(self.attrs))
 
 class HiddenInput(ScalarInput):
     def html(self):
