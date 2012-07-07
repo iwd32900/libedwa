@@ -590,7 +590,7 @@ def matches_peer(peername):
     '''Requires that two fields have identical values, e.g. for re-entering an email address.'''
     def validate(val, peers, **kwargs):
         peer = peers[peername]
-        if val is None: return # allow field to be empty
+        if not val: return # allow field to be empty, including the empty string
         if val != peer.value: return "Does not match %s" % peer.label
     return validate
 
