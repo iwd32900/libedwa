@@ -398,27 +398,30 @@ class Select(ChoiceInput):
         lines.append(u"</select>")
         return u"\n".join(lines)
 
-class RadioSelect(ChoiceInput):
+class ChildSelect(ChoiceInput):
+    """
+    Base for selection elements that use multiple HTML elements as children.
+    """
+    def __init__(self, form, name, **kwargs):
+        super(ChildSelect, self).__init__(form, name, **kwargs)
+        kwargs.pop("label", None)
+        self.children = [self.InputClass(form, name, value=choice.value, label=choice.label, id_postfix=(".%i" % ii), **kwargs) for ii, choice in enumerate(self.choices)]
+        self.by_value = dict((c.checked_value, c) for c in self.children) # for random access to `children` by their value
+    def __iter__(self):
+        for child in self.children: yield child
+    def __getitem__(self, k):
+        """Return child components by value."""
+        return self.by_value[k]
+
+class RadioSelect(ChildSelect):
     """Although this derives from VectorInput, only one radio can be selected at a time.
     Thus, it returns a scalar value when a radio is selected.
     It returns the empty list when no radios are selected."""
     single_selection = True
-    def __init__(self, form, name, **kwargs):
-        super(RadioSelect, self).__init__(form, name, **kwargs)
-        kwargs.pop("choices", None)
-        kwargs.pop("label", None)
-        self.children = [RadioInput(form, name, value=choice.value, label=choice.label, id_postfix=(".%i" % ii), **kwargs) for ii, choice in enumerate(self.choices)]
-    def __iter__(self):
-        for child in self.children: yield child
+    InputClass = RadioInput
 
-class CheckboxSelect(ChoiceInput):
-    def __init__(self, form, name, **kwargs):
-        super(CheckboxSelect, self).__init__(form, name, **kwargs)
-        kwargs.pop("choices", None)
-        kwargs.pop("label", None)
-        self.children = [CheckboxInput(form, name, value=choice.value, label=choice.label, id_postfix=(".%i" % ii), **kwargs) for ii, choice in enumerate(self.choices)]
-    def __iter__(self):
-        for child in self.children: yield child
+class CheckboxSelect(ChildSelect):
+    InputClass = CheckboxInput
 
 ### Input types for use with type=... ###
 
@@ -575,9 +578,13 @@ def in_choices(choices):
     """
     Validates that the value of a ScalarInput is a valid choice,
     or that all values for the VectorInput are allowable choices.
-    "choices" can be either plain values or a list of Choice objects.
+    "choices" can be any of the formats taken by a ChoiceInput.
     """
-    allowed = set((c.value if isinstance(c, Choice) else c) for c in choices)
+    allowed = set()
+    for choice in choices:
+        if isinstance(choice, Choice): allowed.add(choice.value)
+        elif isinstance(choice, (list,tuple)): allowed.add(choice[0])
+        else: allowed.add(choice)
     def validate(values, **kwargs):
         ok = False
         # values is probably a list of values
