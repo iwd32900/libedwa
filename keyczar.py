@@ -27,6 +27,7 @@ class KeyczarEDWA(EDWA):
         self._set_page(Page.decode(decompress(self.crypter.Decrypt(self._curr_page_encoded))))
     def _encode_action(self, action):
         assert self._mode is not EDWA.MODE_ACTION, "Can't create new actions during an action, because page state is not finalized."
+        if self._curr_page_encoded is None: self._encode_page() # ensure page has been serialized
         assert self._curr_page_encoded is not None, "Page state must be serialized before creating an action!"
         # Although the action will be encrypted and signed,
         # we have to prevent attackers mixing-and-matching actions with page states.
