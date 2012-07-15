@@ -60,6 +60,7 @@ class DatabaseEDWA(EDWA):
         self._set_page(Page.decode(decompress(data)))
     def _encode_action(self, action):
         assert self._mode is not EDWA.MODE_ACTION, "Can't create new actions during an action, because page state is not finalized."
+        if self._curr_page_encoded is None: self._encode_page() # ensure page has been serialized
         assert self._curr_page_encoded is not None, "Page state must be serialized before creating an action!"
         actionT = meta.tables['libedwa_action']
         data = compress(action.encode(), 1)
@@ -75,6 +76,6 @@ class DatabaseEDWA(EDWA):
         data = self.engine.execute(select).scalar()
         return Action.decode(decompress(data))
     def href(self, action_id):
-        return "?%s=%s&%s=%s" % (EDWA.PAGE_KEY, self._curr_page_encoded, EDWA.ACTION_KEY, action_id)
+        return "?%s=%s&%s=%s" % (EDWA.PAGE_KEY, self.make_page_data(), EDWA.ACTION_KEY, action_id)
     def hidden_form(self):
         return ""

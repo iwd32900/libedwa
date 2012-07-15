@@ -115,6 +115,7 @@ class EDWA(object):
     def _encode_action(self, action):
         """Encode the Action directly as a URL.  Must be paired with page data when passed to run()."""
         assert self._mode is not EDWA.MODE_ACTION, "Can't create new actions during an action, because page state is not finalized."
+        if self._curr_page_encoded is None: self._encode_page() # ensure page has been serialized
         assert self._curr_page_encoded is not None, "Page state must be serialized before creating an action!"
         data = base64.urlsafe_b64encode(compress(action.encode(), 1))
         auth = hmac.new(self._secret_key, data + SEP + self._curr_page_encoded, hashlib.sha1).digest()
@@ -154,7 +155,7 @@ class EDWA(object):
         if render: return self.render_page(request)
     def render_page(self, request):
         """Display the current page state.  Call start() or run() first, with render=False."""
-        self._encode_page() # needs to be present so view can create actions
+        self._curr_page_encoded = None # will be serialized on demand when the first action is encoded
         try:
             self._mode = EDWA.MODE_RENDER
             return self._curr_page(request, self)
@@ -199,7 +200,8 @@ class EDWA(object):
         return self._encode_action(Action(func, args, kwargs))
     def make_page_data(self):
         """Return URL-safe page data token that needs to be passed to run() along with the action token."""
-        assert self._curr_page_encoded is not None
+        if self._curr_page_encoded is None:
+            self._encode_page()
         return self._curr_page_encoded
     # Shortcuts for href(make_XXX()):
     def href_noop(self): return self.href(self.make_noop())
@@ -210,7 +212,7 @@ class EDWA(object):
     def href(self, action_id):
         """Convenience function to wrap action_id's in JavaScript href to POST the hidden_form().
         Typical use in Django: <a href='{% eval edwa.href(edwa.make_goto(...)) %}'>link text</a>"""
-        if self._use_GET and len(action_id)+len(self._curr_page_encoded) <= self._max_url_length:
+        if self._use_GET and len(action_id)+len(self.make_page_data()) <= self._max_url_length:
             return 'libedwa:%s' % action_id # will be expanded to a full URL by JavaScript
         else:
             # quotes need to be escaped; this works for href="..." and href='...'
