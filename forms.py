@@ -90,7 +90,7 @@ class Form(object):
     def add(self, child):
         """Add a new input component to this form."""
         self.children.append(child)
-        self.by_name[child.name] = child
+        self.by_name[child._name] = child
         return self # needed to support "+=" syntax
     __iadd__ = add # so you can use "form += input_element"
     def __iter__(self):
@@ -127,6 +127,11 @@ class Form(object):
         The dictionary is re-generated on the fly each time the function is called,
         so you may want to save it to a variable before using."""
         return dict((child._name, child.value) for child in self.children)
+    def errors(self):
+        """Returns a dictionary mapping input names (without the prefix)
+        to lists of error messages.  Only inputs with errors are included,
+        so if validate() return True, this should be an empty dict."""
+        return dict((child._name, child.errors) for child in self.children if child.errors)
 
 ### Various types of input objects to use in Forms ###
 
@@ -405,7 +410,11 @@ class ChildSelect(ChoiceInput):
     def __init__(self, form, name, **kwargs):
         super(ChildSelect, self).__init__(form, name, **kwargs)
         kwargs.pop("label", None)
-        self.children = [self.InputClass(form, name, value=choice.value, label=choice.label, id_postfix=(".%i" % ii), **kwargs) for ii, choice in enumerate(self.choices)]
+        intial = kwargs.pop("initial", object())
+        # if initial is not set, no choice value can ever equal this particular anonymous object
+        self.children = [self.InputClass(form, name, type=self.type, value=choice.value, initial=(choice.value if choice.value == intial else object()),
+                label=choice.label, id_postfix=("__%i" % ii), **self.attrs) for ii, choice in enumerate(self.choices)]
+        # dots are technically legal in HTML id's, but jQuery doesn't tolerate them
         self.by_value = dict((c.checked_value, c) for c in self.children) # for random access to `children` by their value
     def __iter__(self):
         for child in self.children: yield child
