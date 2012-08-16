@@ -4,7 +4,7 @@ A database-backed backend for Event-Driven Web Applications.
 import datetime, uuid
 import sqlalchemy as sa
 from zlib import compress, decompress
-from libedwa.core import EDWA, Page, Action
+from libedwa.core import EDWA, Page, Action, TamperingError
 
 __all__ = ['DatabaseEDWA']
 
@@ -57,6 +57,7 @@ class DatabaseEDWA(EDWA):
         pageT = meta.tables['libedwa_page']
         select = sa.select([pageT.c.data], sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded))
         data = self.engine.execute(select).scalar()
+        if data is None: raise TamperingError("Unable to find page %s for user %s" % (self._curr_page_encoded, self._user_uuid))
         self._set_page(Page.decode(decompress(data)))
     def _encode_action(self, action):
         assert self._mode is not EDWA.MODE_ACTION, "Can't create new actions during an action, because page state is not finalized."
@@ -74,6 +75,7 @@ class DatabaseEDWA(EDWA):
         jn = pageT.join(actionT, pageT.c.id == actionT.c.page_id)
         select = sa.select([actionT.c.data], sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded, actionT.c.action_uuid == action_id))
         data = self.engine.execute(select).scalar()
+        if data is None: raise TamperingError("Unable to find action %s for user %s" % (action_id, self._user_uuid))
         return Action.decode(decompress(data))
     def href(self, action_id):
         return "?%s=%s&%s=%s" % (EDWA.PAGE_KEY, self.make_page_data(), EDWA.ACTION_KEY, action_id)
