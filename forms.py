@@ -31,6 +31,7 @@ Form-helper library inspired by django.forms, but addressing the following issue
 For example code, see libedwa.django_demo.views.
 """
 
+import itertools
 from libedwa.html import escape, raw, format_attrs
 
 def is_scalar(x):
@@ -365,9 +366,10 @@ class VectorInput(Input):
 
 class Choice(object):
     """An option to be used in a ChoiceInput subclass."""
-    def __init__(self, value, label=None):
+    def __init__(self, value, label=None, optgroup=None):
         self.value = value
         self.label = label or value
+        self.optgroup = optgroup
 
 class ChoiceInput(VectorInput):
     """
@@ -391,15 +393,24 @@ class Select(ChoiceInput):
     """Defaults to single selection -- include multiple=True to allow multiple selection."""
     def __init__(self, form, name, **kwargs):
         self.single_selection = not kwargs.get("multiple", False)
+        self.sort_by_optgroup = kwargs.get("sort_by_optgroup", True)
+        # Python sort is stable, so this should have no effect when optgroups are not used.
         super(Select, self).__init__(form, name, **kwargs)
     def html(self):
         selected = set(unicode(v) for v in self.rawvalue)
         lines = []
         lines.append(u"<select id='%s' name='%s'%s>" % (self.id, self.name, format_attrs(self.attrs)))
-        for choice in self.choices:
-            val = unicode(choice.value)
-            is_selected = (u" selected='selected'" if val in selected else u"")
-            lines.append(u"<option value='%s'%s>%s</option>" % (escape(choice.value), is_selected, escape(choice.label)))
+        if self.sort_by_optgroup: all_choices = sorted(self.choices, key=lambda c: c.optgroup)
+        else: all_choices = self.choices
+        for optgroup, og_choices in itertools.groupby(all_choices, lambda c: c.optgroup):
+            if optgroup is not None:
+                lines.append(u"<optgroup label='%s'>" % escape(optgroup))
+            for choice in og_choices:
+                val = unicode(choice.value)
+                is_selected = (u" selected='selected'" if val in selected else u"")
+                lines.append(u"<option value='%s'%s>%s</option>" % (escape(choice.value), is_selected, escape(choice.label)))
+            if optgroup is not None:
+                lines.append(u"</optgroup>")
         lines.append(u"</select>")
         return u"\n".join(lines)
 
@@ -483,6 +494,14 @@ def Time(formats=TIME_FMTS):
         return f(text).time()
     maketype.untype = f.untype
     return maketype
+
+def Json(text):
+    import json
+    return json.loads(text)
+def Json_untype(obj):
+    import json
+    return json.dumps(obj, separators=(',',':'))
+Json.untype = Json_untype # yes Virginia, you *can* do that to a Python function!
 
 ### Validation functions to use with require=[...] ###
 
