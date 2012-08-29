@@ -384,8 +384,12 @@ class ChoiceInput(VectorInput):
             if isinstance(choice, Choice): pass
             elif isinstance(choice, (list,tuple)): choice = Choice(*choice)
             else: choice = Choice(choice)
-            if choice.value != self.type(choice.value):
-                raise ValueError("Choice (%r, %r) is type %s, not type %s" % (choice.value, choice.label, type(choice.value), self.type))
+            if hasattr(self.type, "untype"):
+                roundtrip_value = self.type(self.type.untype(choice.value))
+            else:
+                roundtrip_value = self.type(choice.value) # should work for str, int, float; but not DateTime or Json
+            if choice.value != roundtrip_value:
+                raise ValueError("Choice (%r, %r) is type %s, not type %s / %s" % (choice.value, choice.label, type(choice.value), self.type, type(roundtrip_value)))
             self.choices.append(choice)
         self.require.append(in_choices(self.choices))
 
@@ -496,6 +500,15 @@ def Time(formats=TIME_FMTS):
     return maketype
 
 def Json(text):
+    """
+    This doesn't work that well, because lists and dicts are not hashable.
+    That causes no end of trouble for SELECT-like elements.
+    
+    A Pickle type *would* be possible, but the pickle format is unsafe --
+    an adversary could inject arbitrary code into this Python process!
+    Thus any pickles would have to be cryptographically signed using HMAC.
+    See e.g. Bottle.py's implementation of secure cookies.
+    """
     import json
     return json.loads(text)
 def Json_untype(obj):
