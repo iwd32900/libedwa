@@ -46,6 +46,15 @@ def _load_func(x):
 class TamperingError(ValueError):
     pass
 
+def _lscmp(a, b):
+    '''
+    Compares two strings in a cryptographically safe way:
+    Runtime is not affected by length of common prefix.
+    Lifted shamelessly from Bottle.py
+    Returns True if a == b, False otherwise.
+    '''
+    return not sum(0 if x==y else 1 for x, y in zip(a, b)) and len(a) == len(b)
+
 class EDWA(object):
     """The main point of interaction for clients.
     Don't try to pickle these objects between requests;
@@ -127,7 +136,9 @@ class EDWA(object):
         assert self._curr_page_encoded is not None, "Page state must be known when decoding an action!"
         if SEP not in action_id: raise TamperingError("Malformed action_id %s" % action_id)
         auth, data = action_id.split(SEP, 1)
-        if base64.urlsafe_b64decode(auth) != hmac.new(self._secret_key, data + SEP + self._curr_page_encoded, hashlib.sha1).digest():
+        expected_sig = hmac.new(self._secret_key, data + SEP + self._curr_page_encoded, hashlib.sha1).digest()
+        received_sig = base64.urlsafe_b64decode(auth)
+        if not _lscmp(expected_sig, received_sig):
             raise TamperingError("Signature does not match for %s" % action_id)
         action = Action.decode(decompress(base64.urlsafe_b64decode(data)))
         return action
