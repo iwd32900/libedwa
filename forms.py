@@ -530,7 +530,8 @@ def not_empty(val, **kwargs):
 def regex(r, error_msg=None):
     """
     A regular expression object or string that input must match.
-    re.search() will be called, so anchor with ^ and $ if desired.
+    re.search() will be called, so anchor with \A and \Z if desired.
+    (^ and $ are OK, but $ can match *before* the last newline, regardless of MULTILINE.)
     The empty string will always be allowed, so pair with not_empty to prevent this.
     """
     if isinstance(r, basestring):
@@ -544,22 +545,22 @@ def regex(r, error_msg=None):
     return validate
 
 slug = regex( # just to be like Django...
-    r'^[-\w]+$',
+    r'\A[-\w]+\Z',
     "Please enter a slug (letters, numbers, hyphens, and/or underscores)")
 
 email = regex( # blatantly stolen from Django
-    r"^(?i)([-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*"  # dot-atom
+    r"\A(?i)([-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*"  # dot-atom
     r'|"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-011\013\014\016-\177])*"' # quoted-string
-    r')@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?$',  # domain
+    r')@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?\Z',  # domain
     "Please enter an email address")
 
 web_url = regex( # also blatantly stolen from Django
-    r'^(?i)https?://' # http:// or https://
+    r'\A(?i)https?://' # http:// or https://
     r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|' #domain...
     r'localhost|' #localhost...
     r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
     r'(?::\d+)?' # optional port
-    r'(?:/?|[/?]\S+)$',
+    r'(?:/?|[/?]\S+)\Z',
     "Please enter a URL, starting with http:// or https://")
 
 def maximum(m):
