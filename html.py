@@ -7,6 +7,8 @@ although I haven't quantified "much" very accurately yet.
 """
 from __future__ import with_statement
 
+def to_unicode(s): return unicode(s, 'utf_8', errors='ignore') # otherwise, default is ASCII and throwing exceptions
+
 class raw(object):
     "A simple wrapper class to mark objects that should not be escaped."
     def __init__(self, obj):
@@ -15,11 +17,11 @@ class raw(object):
 def escape(obj):
     "Escape HTML special chars in the string form of obj, unless obj is wrapped in raw()."
     if obj is None: return u"" # because the string "None" evaluates to True, while "" is False
-    elif isinstance(obj, raw): return unicode(obj.obj)
+    elif isinstance(obj, raw): return to_unicode(obj.obj)
     # Whitelist classes we know are safe to not escape, AND that have special printf formatting codes.
     # All others should be escaped for proper display (e.g. many objects use angle brackets in their str/repr form).
     elif isinstance(obj, (int,long,float)): return obj
-    else: return unicode(obj).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;')
+    else: return to_unicode(obj).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;')
 
 def format_attrs(attrs):
     """Given a dictionary, format it to be included in an HTML tag.
@@ -138,7 +140,7 @@ class Tagger(object):
             else:
                 try: fmtvars = tuple(escape(v) for v in fmtvars)
                 except TypeError: fmtvars = escape(fmtvars) # guess it wasn't iterable after all! (int, bool, etc.)
-            self._raw(unicode(content_or_fmtstr) % fmtvars)
+            self._raw(to_unicode(content_or_fmtstr) % fmtvars)
     def __getitem__(self, raw_content):
         """A total abuse of notation: use [] to output un-escaped HTML."""
         self(raw(raw_content))

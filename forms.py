@@ -32,7 +32,7 @@ For example code, see libedwa.django_demo.views.
 """
 
 import itertools
-from libedwa.html import escape, raw, format_attrs
+from libedwa.html import to_unicode, escape, raw, format_attrs
 
 def is_scalar(x):
     """False if x is a list-like iterable (list, tuple, etc.), but True if x is a string or other scalar."""
@@ -172,7 +172,7 @@ class Input(object):
         self.id = form.id_prefix + self.name + kwargs.pop("id_postfix", "")
         self.label = kwargs.pop("label", name.replace("_", " ").capitalize())
         self.help_text = kwargs.pop("help_text", None)
-        self.type = kwargs.pop("type", unicode)
+        self.type = kwargs.pop("type", to_unicode)
         self.require = kwargs.pop("require", [])
         self.required = kwargs.pop("required", True)
         if self.required: self.require = [not_empty] + self.require
@@ -202,7 +202,7 @@ class Input(object):
             # Type conversion failure on the empty value is OK (maybe, see require=[not_empty]),
             # but type conversion failure on a non-empty value is an error.
             if self.rawvalue:
-                self.errors.append(unicode(ex))
+                self.errors.append(to_unicode(ex))
                 # Although most validators allow None, so we wouldn't *have* to short-circuit,
                 # validators like not_empty will produce a confusing value in response to this None.
                 return self._value
@@ -211,7 +211,7 @@ class Input(object):
         for requirement in self.require:
             try: err = requirement(self._value, peers=peers)
             except TypeError: err = requirement(self._value) # old-style validator doesn't take **kwargs
-            if err: self.errors.append(unicode(err))
+            if err: self.errors.append(to_unicode(err))
         if self.errors: self._value = None
         return self._value
     def objectify(self, value):
@@ -300,10 +300,10 @@ class BooleanInput(ScalarInput):
         # Only fall back to our internal default if no POST data was provided:
         elif hasattr(self, "_initial") and not self.form.data:
             to_search = as_vector(self._initial)
-        strval = unicode(self.checked_value)
+        strval = to_unicode(self.checked_value)
         # Testing "formval is True" allows us to use initial=True
         # This should be safe because POST data can only be strings, not Python True.
-        val = any((strval == unicode(formval) or formval is True) for formval in to_search)
+        val = any((strval == to_unicode(formval) or formval is True) for formval in to_search)
         # Deliberately ignores self.type.untype, even if it's present.
         return bool(val)
     @property
@@ -401,7 +401,7 @@ class Select(ChoiceInput):
         # Python sort is stable, so this should have no effect when optgroups are not used.
         super(Select, self).__init__(form, name, **kwargs)
     def html(self):
-        selected = set(unicode(v) for v in self.rawvalue)
+        selected = set(to_unicode(v) for v in self.rawvalue)
         lines = []
         lines.append(u"<select id='%s' name='%s'%s>" % (self.id, self.name, format_attrs(self.attrs)))
         if self.sort_by_optgroup: all_choices = sorted(self.choices, key=lambda c: c.optgroup)
@@ -410,7 +410,7 @@ class Select(ChoiceInput):
             if optgroup is not None:
                 lines.append(u"<optgroup label='%s'>" % escape(optgroup))
             for choice in og_choices:
-                val = unicode(choice.value)
+                val = to_unicode(choice.value)
                 is_selected = (u" selected='selected'" if val in selected else u"")
                 lines.append(u"<option value='%s'%s>%s</option>" % (escape(choice.value), is_selected, escape(choice.label)))
             if optgroup is not None:

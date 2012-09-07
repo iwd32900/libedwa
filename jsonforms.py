@@ -64,12 +64,12 @@ class NestedForm(Form):
             self._value = self._values_impl("values")
         except Exception, ex:
             self._value = []
-            self.errors.append(unicode(ex))
+            self.errors.append(to_unicode(ex))
         # If coerced successfully, apply the 'require' criteria (if any).
         for requirement in self.require:
             try: err = requirement(self._value) # add kwargs here as needed!
             except TypeError: err = requirement(self._value) # old-style validator doesn't take **kwargs
-            if err: self.errors.append(unicode(err))
+            if err: self.errors.append(to_unicode(err))
         if self.errors:
             self._value = []
             self._valid = False
