@@ -7,7 +7,11 @@ although I haven't quantified "much" very accurately yet.
 """
 from __future__ import with_statement
 
-def to_unicode(s): return unicode(s, 'utf_8', errors='ignore') # otherwise, default is ASCII and throwing exceptions
+UNI_ENC = 'utf8'
+UNI_ERR = 'ignore'
+def to_unicode(x):
+    """ Convert anything to unicode """
+    return x if isinstance(x, unicode) else unicode(str(x), UNI_ENC, UNI_ERR)
 
 class raw(object):
     "A simple wrapper class to mark objects that should not be escaped."
