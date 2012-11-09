@@ -178,7 +178,9 @@ class Input(object):
         if self.required: self.require = [not_empty] + self.require
         if "initial" in kwargs: self._initial = kwargs.pop("initial")
         self.attrs = kwargs
-        self.errors = None # list of error messages, if any, not yet escaped for HTML special chars
+        self.errors = [] # list of error messages, if any, not yet escaped for HTML special chars
+    def error(self, err):
+        self.errors.append(to_unicode(err))
     @property
     def rawvalue(self):
         """The value as provided to the Form, without any kind of transformation or validation."""
@@ -191,7 +193,6 @@ class Input(object):
         if hasattr(self, "_value"):
             return self._value
         # Enter validation mode. Start accumulating error messages.
-        self.errors = []
         # Try to coerce the string form into a Python object.
         # Do not escape error messages here: they will be escaped before output.
         # This means they're still readable for e.g. console output.
@@ -202,7 +203,7 @@ class Input(object):
             # Type conversion failure on the empty value is OK (maybe, see require=[not_empty]),
             # but type conversion failure on a non-empty value is an error.
             if self.rawvalue:
-                self.errors.append(to_unicode(ex))
+                self.error(ex)
                 # Although most validators allow None, so we wouldn't *have* to short-circuit,
                 # validators like not_empty will produce a confusing value in response to this None.
                 return self._value
@@ -211,7 +212,7 @@ class Input(object):
         for requirement in self.require:
             try: err = requirement(self._value, peers=peers)
             except TypeError: err = requirement(self._value) # old-style validator doesn't take **kwargs
-            if err: self.errors.append(to_unicode(err))
+            if err: self.error(err)
         if self.errors: self._value = None
         return self._value
     def objectify(self, value):
