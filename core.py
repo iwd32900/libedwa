@@ -20,8 +20,8 @@ __all__ = ['EDWA', 'TamperingError']
 def _dump_func(f):
     """Given a module-level or instance function, convert to a picklable form."""
     if f is None: return None
-    if hasattr(f, "im_class"): return ".".join((f.__module__, f.im_class.__name__, f.__name__)) # works in 2.x but not 3.x
-    elif hasattr(f, "__self__"): return ".".join((f.__module__, f.__self__.__class__.__name__, f.__name__)) # works in 3.x and 2.7, but not earlier
+    if hasattr(f, "im_class"): return ".".join((f.im_class.__module__, f.im_class.__name__, f.__name__)) # works in 2.x but not 3.x
+    elif hasattr(f, "__self__"): return ".".join((f.__self__.__class__.__module__, f.__self__.__class__.__name__, f.__name__)) # works in 3.x and 2.7, but not earlier
     else: return ".".join((f.__module__, f.__name__))
 
 def _load_func(x):
