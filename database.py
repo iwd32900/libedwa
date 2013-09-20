@@ -73,7 +73,7 @@ class DatabaseEDWA(EDWA):
         pageT = meta.tables['libedwa_page']
         actionT = meta.tables['libedwa_action']
         jn = pageT.join(actionT, pageT.c.id == actionT.c.page_id)
-        select = sa.select([actionT.c.data], sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded, actionT.c.action_uuid == action_id))
+        select = sa.select([actionT.c.data], sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded, actionT.c.action_uuid == action_id), from_obj=jn)
         data = self.engine.execute(select).scalar()
         if data is None: raise TamperingError("Unable to find action %s for user %s" % (action_id, self._user_uuid))
         return Action.decode(decompress(data))
