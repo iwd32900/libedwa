@@ -146,8 +146,8 @@ class EDWA(object):
         """No Action provided -- just display the given view.  Used e.g. for the start of a new session."""
         self._set_page(Page(handler, context, None))
         if render: return self.render_page(request)
-    def run(self, request, action_id, page_id, render=True):
-        """Run the provided action and display the resulting view."""
+    def _load_action(self, action_id, page_id):
+        """Load the action and page data, without running the action or rendering the page."""
         action_id = self._typecheck_str(action_id)
         page_id   = self._typecheck_str(page_id)
         # Data is saved in two pieces, "base64(hmac).base64(action)" and "base64(page)"
@@ -156,6 +156,10 @@ class EDWA(object):
         self._curr_page_encoded = page_id # don't decode yet, signature not verified
         action = self._decode_action(action_id) # this checks the signature
         self._decode_page() # if no exception, now safe to decode page data
+        return action
+    def run(self, request, action_id, page_id, render=True):
+        """Run the provided action and display the resulting view."""
+        action = self._load_action(action_id, page_id)
         try:
             self._mode = EDWA.MODE_ACTION
             action_result = action(request, self)
