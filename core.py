@@ -28,17 +28,20 @@ def _load_func(x):
     """Restore a usable function from the results of _dump_func()."""
     if x is None: return None
     names = x.split(".")
-    # Try first 1, 2, ... names as the module name.
-    # (Is it possible to import "foo.bar" without also importing "foo"?)
-    module = None
-    for ii in range(len(names)):
-        module = sys.modules.get(".".join(names[:ii+1]))
-        if module is not None: break
-    else: assert False, "Could not find module for '%s'" % x
+    # Start by assuming the whole thing is a module name, then back off one dot at a time:
+    for ii in xrange(len(names), 0, -1):
+        try:
+            # fromlist=[''] is weird magic needed to get the (last) named module instead of just the first
+            module = __import__(".".join(names[:ii]), fromlist=[''])
+            break
+        except ImportError:
+            pass
+    else:
+        assert False, "Could not find module for '%s'" % x
     # Add on remaining names to the module name.
     # Convert classes into instances of those classes.
     target = module
-    for name in names[ii+1:]:
+    for name in names[ii:]:
         target = getattr(target, name)
         if isinstance(target, type): target = target() # call zero-arg constructor on classes
     return target
