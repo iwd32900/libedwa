@@ -50,7 +50,7 @@ class DatabaseEDWA(EDWA):
         data = compress(self._curr_page.encode(), 1)
         page_uuid = uuid.uuid4().hex
         result = self.engine.execute(pageT.insert(), user_uuid=self._user_uuid, page_uuid=page_uuid, data=data)
-        self._curr_page_id = result.last_inserted_ids()[0] # used for _encode_action()
+        self._curr_page_id = result.inserted_primary_key[0] # used for _encode_action()
         self._curr_page_encoded = page_uuid
     def _decode_page(self):
         assert self._curr_page_encoded is not None
