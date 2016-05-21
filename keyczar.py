@@ -1,6 +1,7 @@
 """
 Encrypted GET and POST data using Keyczar for Event-Driven Web Applications.
 """
+from __future__ import absolute_import
 import hashlib
 from zlib import compress, decompress
 from libedwa.core import EDWA, Page, Action, TamperingError

@@ -48,7 +48,7 @@ class ExecNode(template.Node):
         super(ExecNode, self).__init__()
         tagname, self.code = code.contents.split(None, 1)
     def render(self, context):
-        exec self.code in {}, context
+        exec(self.code, {}, context)
         return ''
 @register.tag(name="exec")
 def do_exec(parser, token):

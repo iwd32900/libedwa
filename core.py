@@ -2,9 +2,14 @@
 A library for Event-Driven Web Applications (EDWA).
 Please see the README file for explanation!
 """
+from past.builtins import cmp
+from future import standard_library
+standard_library.install_aliases()
+from builtins import zip
+from builtins import range
+from builtins import object
 import base64, hashlib, hmac, sys
-try: import cPickle as pickle
-except ImportError: import pickle
+import pickle
 
 # Zlib compressing appears to be a very small net win in size for simple pages.
 # For contexts with lots of English text, though, it may help more?
@@ -20,7 +25,7 @@ __all__ = ['EDWA', 'TamperingError']
 def _dump_func(f):
     """Given a module-level or instance function, convert to a picklable form."""
     if f is None: return None
-    if hasattr(f, "im_class"): return ".".join((f.im_class.__module__, f.im_class.__name__, f.__name__)) # works in 2.x but not 3.x
+    elif hasattr(f, "im_class"): return ".".join((f.im_class.__module__, f.im_class.__name__, f.__name__)) # works in 2.x but not 3.x
     elif hasattr(f, "__self__"): return ".".join((f.__self__.__class__.__module__, f.__self__.__class__.__name__, f.__name__)) # works in 3.x and 2.7, but not earlier
     else: return ".".join((f.__module__, f.__name__))
 
@@ -29,7 +34,7 @@ def _load_func(x):
     if x is None: return None
     names = x.split(".")
     # Start by assuming the whole thing is a module name, then back off one dot at a time:
-    for ii in xrange(len(names), 0, -1):
+    for ii in range(len(names), 0, -1):
         try:
             # fromlist=[''] is weird magic needed to get the (last) named module instead of just the first
             module = __import__(".".join(names[:ii]), fromlist=[''])

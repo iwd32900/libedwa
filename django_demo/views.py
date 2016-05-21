@@ -1,3 +1,4 @@
+from builtins import object
 ################################################################################
 #
 # This is a toy Django application to demonstrate use of LibEDWA.
@@ -180,5 +181,5 @@ class FormPage(object):
                 t.hr("")
                 t.p(form.validate())
                 t.p(form.rawvalues())
-                t.p(form.values())
+                t.p(list(form.values()))
         return response

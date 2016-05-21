@@ -5,13 +5,19 @@ The Tagger class is inspired by Haml (http://haml-lang.com/) for Ruby.
 Compared to Django templates, it's also much faster (as of Django 1.0.2),
 although I haven't quantified "much" very accurately yet.
 """
+from __future__ import print_function
 from __future__ import with_statement
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from past.builtins import basestring
+from builtins import object
 
 UNI_ENC = 'utf8'
 UNI_ERR = 'ignore'
 def to_unicode(x):
     """ Convert anything to unicode """
-    return x if isinstance(x, unicode) else unicode(str(x), UNI_ENC, UNI_ERR)
+    return x if isinstance(x, str) else str(x, UNI_ENC, UNI_ERR)
 
 class raw(object):
     "A simple wrapper class to mark objects that should not be escaped."
@@ -24,7 +30,7 @@ def escape(obj):
     elif isinstance(obj, raw): return to_unicode(obj.obj)
     # Whitelist classes we know are safe to not escape, AND that have special printf formatting codes.
     # All others should be escaped for proper display (e.g. many objects use angle brackets in their str/repr form).
-    elif isinstance(obj, (int,long,float)): return obj
+    elif isinstance(obj, (int,float)): return obj
     else: return to_unicode(obj).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;').replace("'", '&#39;')
 
 def format_attrs(attrs):
@@ -36,7 +42,7 @@ def format_attrs(attrs):
     u" class='my-css-class' checked='checked' value='&lt;UNSAFE&gt; &amp; &quot;VALUE&quot;'"
     """
     attr_strs = []
-    for name, value in attrs.iteritems():
+    for name, value in attrs.items():
         name = name.rstrip("_") # e.g. allow "class_" instead of "class"
         if value is False or value is None: continue
         elif value is True: value = escape(name)
@@ -120,7 +126,7 @@ class Tagger(object):
     def __init__(self, buffer=None, indent=None, doctype=HTML4_STRICT):
         "If indent is set to a number, each tag level will be indented by that many more spaces."
         if buffer is None:
-            from cStringIO import StringIO
+            from io import StringIO
             buffer = StringIO()
         self._buffer = buffer
         self._raw = buffer.write # a function!
@@ -138,7 +144,7 @@ class Tagger(object):
             self._raw(escape(content_or_fmtstr))
         else:
             if hasattr(fmtvars, "iteritems"):
-                fmtvars = dict((k, escape(v)) for k, v in fmtvars.iteritems())
+                fmtvars = dict((k, escape(v)) for k, v in fmtvars.items())
             elif isinstance(fmtvars, basestring):
                 fmtvars = escape(fmtvars)
             else:
@@ -165,7 +171,7 @@ def testit():
                 t.td("%s, %s, %.2f", ("One", "<II>", 3.14159))
                 t.td("Hello %(othername)s, I'm %(selfname)s", {"othername":"'Foo'", "selfname":raw("'Bar'")})
             t(raw("<input type='hidden' name='foo' value='bar'>"))
-    print t._buffer.getvalue()
+    print(t._buffer.getvalue())
 
 if __name__ == "__main__":
     import doctest

@@ -30,6 +30,10 @@ Form-helper library inspired by django.forms, but addressing the following issue
 
 For example code, see libedwa.django_demo.views.
 """
+from future import standard_library
+standard_library.install_aliases()
+from past.builtins import basestring
+from builtins import object
 
 import itertools
 from libedwa.html import to_unicode, escape, raw, format_attrs
@@ -87,7 +91,7 @@ class Form(object):
             data.update(files) # include info about uploaded files
         # Make sure keys are prefixed with the form-wide prefix.
         # Make sure values are lists -- convert bare values into single-item lists.
-        self.data = dict(((k if k.startswith(self.prefix) else self.prefix+k), as_vector(v)) for k, v in data.iteritems())
+        self.data = dict(((k if k.startswith(self.prefix) else self.prefix+k), as_vector(v)) for k, v in data.items())
     def add(self, child):
         """Add a new input component to this form."""
         self.children.append(child)
@@ -198,7 +202,7 @@ class Input(object):
         # This means they're still readable for e.g. console output.
         try:
             self._value = self.objectify(self.rawvalue)
-        except Exception, ex:
+        except Exception as ex:
             self._value = None
             # Type conversion failure on the empty value is OK (maybe, see require=[not_empty]),
             # but type conversion failure on a non-empty value is an error.
@@ -274,7 +278,7 @@ class FileInput(ScalarInput):
             if isinstance(x, cgi.FieldStorage):
                 if x.file: return x.file
                 else:
-                    import cStringIO as StringIO
+                    import io as StringIO
                     return StringIO.StringIO(x.value)
             # Django kindly provides file-like objects to start with, which evaluate as True.
             elif x: return x

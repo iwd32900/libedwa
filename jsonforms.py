@@ -2,6 +2,8 @@
 Advanced forms library allowing "nesting" one form inside another.
 Uses JavaScript and JQuery (1.4+) to return results in JSON format.
 """
+from builtins import zip
+from past.builtins import basestring
 import uuid
 from copy import deepcopy
 from copy import copy as shallow_copy
@@ -43,7 +45,7 @@ class NestedForm(Form):
         elif is_scalar(data): data = as_vector(data)
         # Make sure keys are prefixed with the form-wide prefix.
         # Make sure values are lists -- convert bare values into single-item lists.
-        self.data = [dict(((k if k.startswith(self.prefix) else self.prefix+k), as_vector(v)) for k, v in datum.iteritems()) for datum in data]
+        self.data = [dict(((k if k.startswith(self.prefix) else self.prefix+k), as_vector(v)) for k, v in datum.items()) for datum in data]
         # Need to re-initialize the subforms
         self.kids = None
     def rawvalues(self):
@@ -62,7 +64,7 @@ class NestedForm(Form):
         # This means they're still readable for e.g. console output.
         try:
             self._value = self._values_impl("values")
-        except Exception, ex:
+        except Exception as ex:
             self._value = []
             self.errors.append(to_unicode(ex))
         # If coerced successfully, apply the 'require' criteria (if any).
@@ -130,7 +132,7 @@ class NestedForm(Form):
         return self.rawvalues()
     @property
     def value(self):
-        return self.values()
+        return list(self.values())
 
 def make_template(nform, extras, indent=""):
     """Returns as JavaScript object as a string, starting with "{" and ending with "}"."""
