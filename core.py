@@ -26,7 +26,9 @@ def _dump_func(f):
     """Given a module-level or instance function, convert to a picklable form."""
     if f is None: return None
     elif hasattr(f, "im_class"): return ".".join((f.im_class.__module__, f.im_class.__name__, f.__name__)) # works in 2.x but not 3.x
-    elif hasattr(f, "__self__"): return ".".join((f.__self__.__class__.__module__, f.__self__.__class__.__name__, f.__name__)) # works in 3.x and 2.7, but not earlier
+    elif hasattr(f, "__self__"): return ".".join((f.__self__.__class__.__module__, f.__self__.__class__.__name__, f.__name__)) # works in 3.x and 2.7, for instantiated objects (bound methods) but not classes (unbound methods)
+    # See http://stackoverflow.com/questions/3589311/get-defining-class-of-unbound-method-object-in-python-3/25959545#25959545
+    elif hasattr(f, "__qualname__"): return ".".join((f.__module__, f.__qualname__)) # works in 3.3+, for classes (unbound methods)
     else: return ".".join((f.__module__, f.__name__))
 
 def _load_func(x):
