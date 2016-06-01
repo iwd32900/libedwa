@@ -9,15 +9,22 @@ from __future__ import print_function
 from __future__ import with_statement
 from future import standard_library
 standard_library.install_aliases()
-from builtins import str
+#from builtins import str
 from past.builtins import basestring
 from builtins import object
+import sys
 
-UNI_ENC = 'utf8'
-UNI_ERR = 'ignore'
-def to_unicode(x):
-    """ Convert anything to unicode """
-    return x if isinstance(x, str) else str(x, UNI_ENC, UNI_ERR)
+# I couldn't make things work properly with future.builtins.newstr, so we'll detect versions:
+if sys.version[0] == 2:
+    UNI_ENC = 'utf8'
+    UNI_ERR = 'ignore'
+    def to_unicode(x):
+        """ Convert anything to unicode """
+        return x if isinstance(x, unicode) else unicode(str(x), UNI_ENC, UNI_ERR)
+else:
+    def to_unicode(x):
+        """ Convert anything to unicode """
+        return x if isinstance(x, str) else str(x)
 
 class raw(object):
     "A simple wrapper class to mark objects that should not be escaped."
