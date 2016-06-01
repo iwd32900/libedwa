@@ -371,7 +371,8 @@ class VectorInput(Input):
 
 class Choice(object):
     """An option to be used in a ChoiceInput subclass."""
-    def __init__(self, value, label=None, optgroup=None):
+    def __init__(self, value, label=None, optgroup=''):
+        # In Py3, default optgroup is '' because None can't be sorted.  Bah.
         self.value = value
         self.label = label or value
         self.optgroup = optgroup
@@ -412,13 +413,13 @@ class Select(ChoiceInput):
         if self.sort_by_optgroup: all_choices = sorted(self.choices, key=lambda c: c.optgroup)
         else: all_choices = self.choices
         for optgroup, og_choices in itertools.groupby(all_choices, lambda c: c.optgroup):
-            if optgroup is not None:
+            if optgroup:
                 lines.append(u"<optgroup label='%s'>" % escape(optgroup))
             for choice in og_choices:
                 val = to_unicode(choice.value)
                 is_selected = (u" selected='selected'" if val in selected else u"")
                 lines.append(u"<option value='%s'%s>%s</option>" % (escape(choice.value), is_selected, escape(choice.label)))
-            if optgroup is not None:
+            if optgroup:
                 lines.append(u"</optgroup>")
         lines.append(u"</select>")
         return u"\n".join(lines)
