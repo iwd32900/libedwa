@@ -168,3 +168,4 @@ Note that all GET methods failover to their corresponding POST methods if encode
 EDWA builds on ideas developed in PHP by Ian Davis for MolProbity (http://molprobity.biochem.duke.edu).
 
 Development of EDWA has been made possible in part by GrassRoots Biotechnology.
+
