@@ -505,22 +505,11 @@ def Time(formats=TIME_FMTS):
     maketype.untype = f.untype
     return maketype
 
-def Json(text):
-    """
-    This doesn't work that well, because lists and dicts are not hashable.
-    That causes no end of trouble for SELECT-like elements.
-    
-    A Pickle type *would* be possible, but the pickle format is unsafe --
-    an adversary could inject arbitrary code into this Python process!
-    Thus any pickles would have to be cryptographically signed using HMAC.
-    See e.g. Bottle.py's implementation of secure cookies.
-    """
-    import json
-    return json.loads(text)
-def Json_untype(obj):
-    import json
-    return json.dumps(obj, separators=(',',':'))
-Json.untype = Json_untype # yes Virginia, you *can* do that to a Python function!
+# It may seem like you want a JSON type or a Pickle type so that ChoiceInputs
+# can return arbitrary Python objects, but it's problematic:
+# Because Python lists and dicts don't hash, in_choices() doesn't work.
+# It's better to construct a list/dict of objects on the server side,
+# and map them to unique ints or short unique strings, and use those instead.
 
 ### Validation functions to use with require=[...] ###
 
@@ -703,4 +692,3 @@ def as_table(form, css=u"edwa-"):
             lines.append(u"</table></div><div class='%smsgs'>%s%s</div></td></tr>" % (css, help, errors))
         row_idx = (row_idx + 1) % 2
     return u"\n".join(lines)
-
