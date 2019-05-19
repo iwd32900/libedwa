@@ -59,9 +59,10 @@ def as_vector(x):
 
 class Form(object):
     """Basic HTML form.  To add fields, use "+=" rather than trying to subclass.  See set_data() for "data" and "files"."""
-    def __init__(self, action="", data={}, files={}, method="POST", prefix="", id_prefix="id_", **kwargs):
+    def __init__(self, action="", data={}, files={}, method="POST", prefix="", id_prefix="id_", csrf=None, **kwargs):
         """
         data    see set_data()
+        csrf    a string that must appear when the form is submitted, as CSRF protection
         """
         self.action = action
         self.method = method
@@ -71,6 +72,8 @@ class Form(object):
         self.children = []
         self.by_name = {} # for random access to `children`
         self.set_data(data=data, files=files)
+        if csrf:
+            self += HiddenInput(self, '__csrf__', initial=csrf, require=[equals_str(csrf)])
     def set_data(self, data={}, files={}):
         """
         data    A dictionary mapping HTML names (as strings) to lists of values.
@@ -521,6 +524,18 @@ def not_empty(val, **kwargs):
     # However "0 is False" is false, as expected
     if val is None or val is False or val in ("", u"", [], tuple(), {}):
         return "This field is required"
+
+def equals_str(s, error_msg=None):
+    """
+    A string that input must match.
+    The empty string will always be allowed, so pair with not_empty to prevent this.
+    """
+    def validate(val, **kwargs):
+        if not val: return # allow field to be empty, including the empty string
+        if val != s:
+            if error_msg: return error_msg
+            else: return "Please enter '%s'" % s
+    return validate
 
 def regex(r, error_msg=None):
     """
