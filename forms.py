@@ -38,6 +38,11 @@ from builtins import object
 import itertools
 from libedwa.html import to_unicode, escape, raw, format_attrs
 
+def trimmed_unicode(x):
+    # A default form element type that doesn't allow leading or trailing whitespace,
+    # because I can't think of any situations where you actually want that.
+    return to_unicode(x).strip()
+
 def is_scalar(x):
     """False if x is a list-like iterable (list, tuple, etc.), but True if x is a string or other scalar."""
     if isinstance(x, basestring): return True
@@ -179,7 +184,7 @@ class Input(object):
         self.id = form.id_prefix + self.name + kwargs.pop("id_postfix", "")
         self.label = kwargs.pop("label", name.replace("_", " ").capitalize())
         self.help_text = kwargs.pop("help_text", None)
-        self.type = kwargs.pop("type", to_unicode)
+        self.type = kwargs.pop("type", trimmed_unicode)
         self.require = kwargs.pop("require", [])
         self.required = kwargs.pop("required", True)
         if self.required: self.require = [not_empty] + self.require
