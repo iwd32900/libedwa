@@ -76,6 +76,9 @@ class Form(object):
         self.attrs = kwargs
         self.children = []
         self.by_name = {} # for random access to `children`
+        if csrf and data:
+            # If `data` is present, it will otherwise mask the `initial` value for CSRF.
+            data['__csrf__'] = csrf
         self.set_data(data=data, files=files)
         if csrf:
             self += HiddenInput(self, '__csrf__', initial=csrf, require=[equals_str(csrf)])
