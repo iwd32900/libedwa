@@ -64,10 +64,10 @@ def as_vector(x):
 
 class Form(object):
     """Basic HTML form.  To add fields, use "+=" rather than trying to subclass.  See set_data() for "data" and "files"."""
-    def __init__(self, action="", data={}, files={}, method="POST", prefix="", id_prefix="id_", csrf=None, **kwargs):
+    def __init__(self, action="", initial={}, method="POST", prefix="", id_prefix="id_", csrf=None, **kwargs):
         """
-        data    see set_data()
-        csrf    a string that must appear when the form is submitted, as CSRF protection
+        initial     dict of fallback values if initial= isn't specified on the input
+        csrf        a string that must appear when the form is submitted, as CSRF protection
         """
         self.action = action
         self.method = method
@@ -76,19 +76,18 @@ class Form(object):
         self.attrs = kwargs
         self.children = []
         self.by_name = {} # for random access to `children`
-        if csrf and data:
-            # If `data` is present, it will otherwise mask the `initial` value for CSRF.
-            data['__csrf__'] = csrf
-        self.set_data(data=data, files=files)
+        self.initial = dict(initial) # make a copy
+        self.data = {}
         if csrf:
             self += HiddenInput(self, '__csrf__', initial=csrf, require=[equals_str(csrf)])
+            # we MUST NOT inject this value into `data`, or the check will ALWAYS pass
     def set_data(self, data={}, files={}):
         """
         data    A dictionary mapping HTML names (as strings) to lists of values.
                 Bare, non-list values will automatically be wrapped in lists.
-                This can either be initial values, or the result of form submission.
-                Calling this function replaces any values passed previously or in the constructor,
-                and overrides any values passed to individual inputs as initial=...
+                This should be the result of form submission.
+                Do not use for initial/default values -- it will break CSRF.
+                These values override any values passed to individual inputs as initial=...
                 In Django, try dict(request.POST.lists()).
                 In Bottle, try request.forms.dict.
         files   A dictionary mapping HTML names (as strings) to file-like objects.
@@ -191,7 +190,10 @@ class Input(object):
         self.require = kwargs.pop("require", [])
         self.required = kwargs.pop("required", True)
         if self.required: self.require = [not_empty] + self.require
-        if "initial" in kwargs: self._initial = kwargs.pop("initial")
+        if "initial" in kwargs:
+            self._initial = kwargs.pop("initial")
+        elif self._name in self.form.initial: # non-prefixed name
+            self._initial = self.form.initial[self._name]
         self.attrs = kwargs
         self.errors = [] # list of error messages, if any, not yet escaped for HTML special chars
     def error(self, err):
@@ -442,9 +444,9 @@ class ChildSelect(ChoiceInput):
     def __init__(self, form, name, **kwargs):
         super(ChildSelect, self).__init__(form, name, **kwargs)
         kwargs.pop("label", None)
-        intial = kwargs.pop("initial", object())
+        initial = getattr(self, "_initial", object()) # "initial" is already popped from kwargs
         # if initial is not set, no choice value can ever equal this particular anonymous object
-        self.children = [self.InputClass(form, name, type=self.type, value=choice.value, initial=(choice.value if choice.value == intial else object()),
+        self.children = [self.InputClass(form, name, type=self.type, value=choice.value, initial=(choice.value if choice.value == initial else object()),
                 label=choice.label, id_postfix=("__%i" % ii), **self.attrs) for ii, choice in enumerate(self.choices)]
         # dots are technically legal in HTML id's, but jQuery doesn't tolerate them
         self.by_value = dict((c.checked_value, c) for c in self.children) # for random access to `children` by their value
