@@ -2,13 +2,7 @@
 A library for Event-Driven Web Applications (EDWA).
 Please see the README file for explanation!
 """
-from past.builtins import cmp
-from future import standard_library
-standard_library.install_aliases()
-from builtins import zip
-from builtins import range
-from builtins import object
-import base64, hashlib, hmac, sys
+import base64, hashlib, hmac
 import pickle
 
 # Zlib compressing appears to be a very small net win in size for simple pages.
@@ -350,8 +344,8 @@ class Page(object):
         # edwa.context will be the context of the returned-to page (self.parent.context), not self.context
         if self.return_handler is not None:
             self.return_handler(edwa, return_value, self.return_context)
-    def __cmp__(self, other):
-        return cmp(self.__dict__, other.__dict__)
+    # def __cmp__(self, other):
+    #     return cmp(self.__dict__, other.__dict__)
 
 class Action(object):
     """Wrapper for an action function and its initial state."""

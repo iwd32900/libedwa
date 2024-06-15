@@ -15,14 +15,14 @@ sa.Table('libedwa_page', meta,
     sa.Column('created_utc', sa.DateTime, index=True, nullable=False, default=datetime.datetime.utcnow),
     sa.Column('user_uuid', sa.String(32), nullable=True),
     sa.Column('page_uuid', sa.String(32), nullable=False),
-    sa.Column('data', sa.Binary),
+    sa.Column('data', sa.LargeBinary),
     mysql_engine='InnoDB'
     )
 sa.Index('libedwa_user_page_idx', meta.tables['libedwa_page'].c.user_uuid, meta.tables['libedwa_page'].c.page_uuid, unique=True)
 sa.Table('libedwa_action', meta,
     sa.Column('page_id', sa.Integer, sa.ForeignKey('libedwa_page.id', ondelete='CASCADE'), nullable=False),
     sa.Column('action_uuid', sa.String(32), nullable=False),
-    sa.Column('data', sa.Binary),
+    sa.Column('data', sa.LargeBinary),
     sa.PrimaryKeyConstraint('page_id', 'action_uuid'),
     mysql_engine='InnoDB'
     )
@@ -49,13 +49,13 @@ class DatabaseEDWA(EDWA):
         pageT = meta.tables['libedwa_page']
         data = compress(self._curr_page.encode(), 1)
         page_uuid = uuid.uuid4().hex
-        result = self.engine.execute(pageT.insert(), user_uuid=self._user_uuid, page_uuid=page_uuid, data=data)
+        result = self.engine.execute(pageT.insert(), dict(user_uuid=self._user_uuid, page_uuid=page_uuid, data=data))
         self._curr_page_id = result.inserted_primary_key[0] # used for _encode_action()
         self._curr_page_encoded = page_uuid
     def _decode_page(self):
         assert self._curr_page_encoded is not None
         pageT = meta.tables['libedwa_page']
-        select = sa.select([pageT.c.data], sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded))
+        select = sa.select(pageT.c.data).where(sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded))
         data = self.engine.execute(select).scalar()
         if data is None: raise TamperingError("Unable to find page %s for user %s" % (self._curr_page_encoded, self._user_uuid))
         self._set_page(Page.decode(decompress(data)))
@@ -66,14 +66,14 @@ class DatabaseEDWA(EDWA):
         actionT = meta.tables['libedwa_action']
         data = compress(action.encode(), 1)
         action_uuid = uuid.uuid4().hex
-        self.engine.execute(actionT.insert(), page_id=self._curr_page_id, action_uuid=action_uuid, data=data)
+        self.engine.execute(actionT.insert(), dict(page_id=self._curr_page_id, action_uuid=action_uuid, data=data))
         return action_uuid
     def _decode_action(self, action_id):
         assert self._curr_page_encoded is not None, "Page state must be known when decoding an action!"
         pageT = meta.tables['libedwa_page']
         actionT = meta.tables['libedwa_action']
         jn = pageT.join(actionT, pageT.c.id == actionT.c.page_id)
-        select = sa.select([actionT.c.data], sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded, actionT.c.action_uuid == action_id), from_obj=jn)
+        select = sa.select(actionT.c.data).select_from(jn).where(sa.and_(pageT.c.user_uuid == self._user_uuid, pageT.c.page_uuid == self._curr_page_encoded, actionT.c.action_uuid == action_id))
         data = self.engine.execute(select).scalar()
         if data is None: raise TamperingError("Unable to find action %s for user %s" % (action_id, self._user_uuid))
         return Action.decode(decompress(data))

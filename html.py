@@ -7,11 +7,6 @@ although I haven't quantified "much" very accurately yet.
 """
 from __future__ import print_function
 from __future__ import with_statement
-from future import standard_library
-standard_library.install_aliases()
-#from builtins import str
-from past.builtins import basestring
-from builtins import object
 import sys
 
 # I couldn't make things work properly with future.builtins.newstr, so we'll detect versions:
@@ -44,7 +39,7 @@ def format_attrs(attrs):
     """Given a dictionary, format it to be included in an HTML tag.
     Names may include a trailing underscore to distinguish them from Python keywords (e.g. "class_"),
     and True and False may be used for logical attributes, like "checked" and "disabled".
-    
+
     >>> format_attrs({'class_':'my-css-class', 'value':'<UNSAFE> & "VALUE"', 'checked':True, 'disabled':False})
     u" class='my-css-class' checked='checked' value='&lt;UNSAFE&gt; &amp; &quot;VALUE&quot;'"
     """
@@ -97,16 +92,16 @@ class Tag(object):
         if outer is not None: return outer.__exit__(exc_type, exc_value, traceback)
     def __call__(self, content_or_fmtstr=None, fmtvars=None, **kwargs):
         """Supports several nearly-conflicting behaviors!
-        
+
         tag("some message")
             Writes its argument to the tagger, wrapped in opening and closing tags,
             escaping any special chars.
-            
+
         tag("%(foo)s = %(bar)i", vals)
             Escapes the values in dictionary or tuple "vals", does string interpolation,
             and then writes the result wrapped in opening and closing tags, without further escaping.
             (That is, the format string is expected to be HTML-safe already.)
-            
+
         tag(class_="my-css-class", checked=True):
             Updates self.attrs and returns self, for use in a with statement.
         """
@@ -122,7 +117,7 @@ class Tag(object):
         inner = getattr(self.tagger, x)
         inner.outer = self
         return inner
-        
+
 # TODO: add other doctypes below
 HTML4_STRICT = '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">'
 
@@ -152,7 +147,7 @@ class Tagger(object):
         else:
             if hasattr(fmtvars, "iteritems"):
                 fmtvars = dict((k, escape(v)) for k, v in fmtvars.items())
-            elif isinstance(fmtvars, basestring):
+            elif isinstance(fmtvars, str):
                 fmtvars = escape(fmtvars)
             else:
                 try: fmtvars = tuple(escape(v) for v in fmtvars)

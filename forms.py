@@ -30,12 +30,8 @@ Form-helper library inspired by django.forms, but addressing the following issue
 
 For example code, see libedwa.django_demo.views.
 """
-from future import standard_library
-standard_library.install_aliases()
-from past.builtins import basestring
-from builtins import object
 
-import itertools
+import itertools, re
 from libedwa.html import to_unicode, escape, raw, format_attrs
 
 def trimmed_unicode(x):
@@ -45,7 +41,7 @@ def trimmed_unicode(x):
 
 def is_scalar(x):
     """False if x is a list-like iterable (list, tuple, etc.), but True if x is a string or other scalar."""
-    if isinstance(x, basestring): return True
+    if isinstance(x, str): return True
     if hasattr(x, "keys") and hasattr(x, "values"): return True
     try:
         iter(x)
@@ -476,7 +472,7 @@ DATE_TIME_FMTS = [" ".join((d, t)) for d in DATE_FMTS for t in TIME_FMTS] + [" "
 def as_date_or_time(x):
     """'x' should be a date, time, or datetime object from the datetime module,
     or a string matching one of the default allowed formats."""
-    if not isinstance(x, basestring): return x
+    if not isinstance(x, str): return x
     import datetime as dt
     # Try simple date and time first, because there are fewer of those to check!
     for format in DATE_FMTS:
@@ -547,16 +543,15 @@ def equals_str(s, error_msg=None):
             else: return "Please enter '%s'" % s
     return validate
 
-def regex(r, error_msg=None):
+def regex(r, error_msg=None, flags=0):
     """
     A regular expression object or string that input must match.
     re.search() will be called, so anchor with \A and \Z if desired.
     (^ and $ are OK, but $ can match *before* the last newline, regardless of MULTILINE.)
     The empty string will always be allowed, so pair with not_empty to prevent this.
     """
-    if isinstance(r, basestring):
-        import re
-        r = re.compile(r)
+    if isinstance(r, str):
+        r = re.compile(r, flags=flags)
     def validate(val, **kwargs):
         if not val: return # allow field to be empty, including the empty string
         if not r.search(val):
@@ -569,19 +564,19 @@ slug = regex( # just to be like Django...
     "Please enter a slug (letters, numbers, hyphens, and/or underscores)")
 
 email = regex( # blatantly stolen from Django
-    r"\A(?i)([-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*"  # dot-atom
+    r"\A([-!#$%&'*+/=?^_`{}|~0-9A-Z]+(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*"  # dot-atom
     r'|"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-011\013\014\016-\177])*"' # quoted-string
     r')@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?\Z',  # domain
-    "Please enter an email address")
+    "Please enter an email address", flags=re.IGNORECASE)
 
 web_url = regex( # also blatantly stolen from Django
-    r'\A(?i)https?://' # http:// or https://
+    r'\Ahttps?://' # http:// or https://
     r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|' #domain...
     r'localhost|' #localhost...
     r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
     r'(?::\d+)?' # optional port
     r'(?:/?|[/?]\S+)\Z',
-    "Please enter a URL, starting with http:// or https://")
+    "Please enter a URL, starting with http:// or https://", flags=re.IGNORECASE)
 
 def maximum(m):
     """Maximum numeric value, inclusive."""
